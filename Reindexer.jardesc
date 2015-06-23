@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="WINDOWS-1252" standalone="no"?>
+<jardesc>
+    <jar path="ReindexerSierraClassic/Reindexer.jar"/>
+    <options buildIfNeeded="true" compress="true" descriptionLocation="/ReindexerSierraClassic/Reindexer.jardesc" exportErrors="true" exportWarnings="true" includeDirectoryEntries="false" overwrite="false" saveDescription="true" storeRefactorings="false" useSourceFolders="false"/>
+    <storedRefactorings deprecationInfo="true" structuralOnly="false"/>
+    <selectedProjects/>
+    <manifest generateManifest="false" mainClassHandleIdentifier="=ReindexerSierraClassic/src&lt;org.vufind{ReindexProcess.java[ReindexProcess" manifestLocation="/ReindexerSierraClassic/Reindexer.manifest" manifestVersion="1.0" reuseManifest="true" saveManifest="true" usesManifest="true">
+        <sealing sealJar="false">
+            <packagesToSeal/>
+            <packagesToUnSeal/>
+        </sealing>
+    </manifest>
+    <selectedElements exportClassFiles="true" exportJavaFiles="false" exportOutputFolder="false">
+        <javaElement handleIdentifier="=ReindexerSierraClassic/src&lt;org.json"/>
+        <javaElement handleIdentifier="=ReindexerSierraClassic/src&lt;org.vufind"/>
+        <javaElement handleIdentifier="=ReindexerSierraClassic/src&lt;org.econtent"/>
+        <javaElement handleIdentifier="=ReindexerSierraClassic/src&lt;org.solrmarc.tools"/>
+    </selectedElements>
+</jardesc>

@@ -123,8 +123,35 @@ public class ReindexProcess {
 				//Do processing of resources as needed (for extraction of resources).
 				processResources(recordProcessors);
 										
+				int errorCount = 0, processedCount = 0;
+				ProcessorResults firstResults = null;
 				for (IRecordProcessor processor : recordProcessors){
 					processor.finish();
+					ProcessorResults results = processor.getResults();
+					if( results != null ) {
+						if( firstResults == null ) {
+							firstResults = results;
+						}
+						errorCount += results.getNumErrors();
+						processedCount += results.getNumErrors();
+					}
+				}
+				
+				// swap cores if needed
+				if( firstResults != null ) {
+					//Do not pass the import if more than 1% of the records have errors 
+					if (errorCount <= processedCount * .01){
+						firstResults.addNote("index passed checks, swapping cores so new index is active.");
+						URLPostResponse response = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
+						if (!response.isSuccess()){
+							firstResults.addNote("Error swapping cores " + response.getMessage());
+						}else{
+							firstResults.addNote("Result of swapping cores " + response.getMessage());
+						}
+					}else{
+						firstResults.addNote("index did not pass check, not swapping");
+					}
+					firstResults.saveResults();
 				}
 				
 				//BA+++ added to cleanup dependent records from delete of items in econtent_record not in Marc or Overdrive

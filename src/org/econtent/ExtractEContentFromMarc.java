@@ -136,12 +136,13 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		localWebDir = configIni.get("Site", "local");
 		
 		//Initialize the updateServer
-		try {
-			updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/econtent2", 500, 10);
-		} catch (MalformedURLException e) {
+		//try {
+		//updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/econtent2", 500, 10);
+		updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/biblio2", 500, 10);
+		//} catch (MalformedURLException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		//	e.printStackTrace();
+		//}
 		
 		//Check to see if we should clear the existing index
 		String clearEContentRecordsAtStartOfIndexVal = configIni.get("Reindex", "clearEContentRecordsAtStartOfIndex");
@@ -155,7 +156,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (clearEContentRecordsAtStartOfIndex){
 			logger.info("Clearing existing econtent records from index");
 			results.addNote("clearing existing econtent records");
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
+			//URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
+			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
 			if (!response.isSuccess()){
 				results.addNote("Error clearing existing econtent records " + response.getMessage());
 			}
@@ -1030,7 +1032,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		logger.info("add Solr info for OD record " + econtentRecordId);
 		SolrInputDocument doc = new SolrInputDocument();
 		doc.addField("id", "econtentRecord" + econtentRecordId);
-		doc.addField("id_sort", "econtentRecord" + econtentRecordId);
+		//BJP//doc.addField("id_sort", "econtentRecord" + econtentRecordId);
 		
 		doc.addField("collection", "Allegheny County Catalog");
 		int numHoldings = 0;
@@ -1041,23 +1043,23 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (curAvailability != null && curAvailability.isAvailable()){
 			doc.addField("available_at", "Digital Collection");
 		}
-		doc.addField("collection_group", "Electronic Access");
+		//BJP//doc.addField("collection_group", "Electronic Access");
 		if (recordInfo.getLanguages().size() == 0){
-			doc.addField("language_boost", "0");
-			doc.addField("language_boost_es", "0");
+			//BJP//doc.addField("language_boost", "0");
+			//BJP//doc.addField("language_boost_es", "0");
 		}else{
 			for (String curLanguage : recordInfo.getLanguages()){
 				doc.addField("language", curLanguage);
-				if (curLanguage.equalsIgnoreCase("English")){
-					doc.addField("language_boost", "300");
-					doc.addField("language_boost_es", "0");
-				}else if (curLanguage.equalsIgnoreCase("Spanish")){
-					doc.addField("language_boost", "0");
-					doc.addField("language_boost_es", "300");
-				}else{
-					doc.addField("language_boost", "0");
-					doc.addField("language_boost_es", "0");
-				}
+				//BJP//if (curLanguage.equalsIgnoreCase("English")){
+				//BJP//	doc.addField("language_boost", "300");
+				//BJP//	doc.addField("language_boost_es", "0");
+				//BJP//}else if (curLanguage.equalsIgnoreCase("Spanish")){
+				//BJP//	doc.addField("language_boost", "0");
+				//BJP//	doc.addField("language_boost_es", "300");
+				//BJP//}else{
+				//BJP//	doc.addField("language_boost", "0");
+				//BJP//	doc.addField("language_boost_es", "0");
+				//BJP//}
 			}
 		}
 		
@@ -1094,7 +1096,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			}
 		}
 		if (firstFormat != null){
-			doc.addField("format_boost", marcProcessor.findMap("format_boost_map").get(firstFormat));
+			//BJP//doc.addField("format_boost", marcProcessor.findMap("format_boost_map").get(firstFormat));
 			doc.addField("format_category", marcProcessor.findMap("format_category_map").get(firstFormat));
 		}
 		doc.addField("author", recordInfo.getAuthor());
@@ -1144,11 +1146,11 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (rating == null) {
 			rating = -2.5f;
 		}
-		doc.addField("rating", Float.toString(rating));
-		Set<String> ratingFacets = marcProcessor.getGetRatingFacet(rating);
-		for (String ratingFacet : ratingFacets){
-			doc.addField("rating_facet", ratingFacet);
-		}
+		//BJP//doc.addField("rating", Float.toString(rating));
+		//BJP//Set<String> ratingFacets = marcProcessor.getGetRatingFacet(rating);
+		//BJP//for (String ratingFacet : ratingFacets){
+		//BJP//	doc.addField("rating_facet", ratingFacet);
+		//BJP//}
 		
 		Collection<String> allFieldNames = doc.getFieldNames();
 		StringBuffer fieldValues = new StringBuffer();
@@ -1157,7 +1159,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			fieldValues.append(doc.getFieldValue(fieldName));
 		}
 		doc.addField("allfields", fieldValues.toString());
-		doc.addField("keywords", fieldValues.toString());
+		//BJP//doc.addField("keywords", fieldValues.toString());
 		
 		return doc;
 	}
@@ -1314,7 +1316,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		
 		try {
 			results.addNote("calling final commit on index");
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<commit />", logger);
+			//URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<commit />", logger);
+			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<commit />", logger);
 			if (!response.isSuccess()){
 				results.incErrors();
 				results.addNote("Error committing changes " + response.getMessage());
@@ -1323,7 +1326,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			results.addNote("optimizing econtent2 index");
 			logger.info("optimizing econtent2 index");
 			try {
-				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<optimize />", logger);
+				//URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<optimize />", logger);
+				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<optimize />", logger);
 				if (!optimizeResponse.isSuccess()){
 					results.addNote("Error optimizing econtent2 index " + optimizeResponse.getMessage());
 				}
@@ -1331,11 +1335,12 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				results.addNote("Error optimizing econtent2 index");
 			}
 
-			
+			/*
 			if (checkMarcImport()){
 				results.addNote("index passed checks, swapping cores so new index is active.");
 				logger.info("index passed checks, swapping cores so new index is active.");
-				URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=econtent2&other=econtent", logger);
+				//URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=econtent2&other=econtent", logger);
+				URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
 				if (!postResponse.isSuccess()){
 					results.addNote("Error swapping cores " + postResponse.getMessage());
 					logger.info("Error swapping cores " + postResponse.getMessage());					
@@ -1348,6 +1353,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				results.addNote("index did not pass check, not swapping");
 				logger.info("index did not pass check, not swapping");
 			}
+			*/
 			
 		} catch (Exception e) {
 			results.addNote("Error finalizing index " + e.toString());

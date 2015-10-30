@@ -1,13 +1,10 @@
 package org.vufind;
 
-import java.io.IOException;
 import java.net.MalformedURLException;
 import java.sql.Connection;
 
 import org.apache.log4j.Logger;
-import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
-import org.apache.solr.client.solrj.response.UpdateResponse;
 import org.apache.solr.common.SolrInputDocument;
 import org.ini4j.Ini;
 
@@ -24,12 +21,12 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 		solrPort = configIni.get("Reindex", "solrPort");
 		
 		//Initialize the updateServer
-		//try {
+		try {
 			updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/biblio2", 5000, 10);
-		//} catch (MalformedURLException e) {
+		} catch (MalformedURLException e) {
 			// TODO Auto-generated catch block
-		//	e.printStackTrace();
-		//}
+			e.printStackTrace();
+		}
 		
 		//Check to see if we should clear the existing index
 		String clearMarcRecordsAtStartOfIndexVal = configIni.get("Reindex", "clearMarcRecordsAtStartOfIndex");
@@ -66,24 +63,10 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 	public void finish() {
 		//Make sure that the index is good and swap indexes
 		results.addNote("calling final commit on index");
-		/**
-		try {
-			UpdateResponse response2 = updateServer.commit();
-		} catch (SolrServerException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-		/**/
-		//URLPostResponse response = Util.getURL("http://localhost:" + solrPort + "/solr/biblio2/update/?commit=true", logger);
 		URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<commit />", logger);
-		logger.debug(response.getResponseCode() + ": " + response.getMessage());
 		if (!response.isSuccess()){
 			results.addNote("Error committing changes " + response.getMessage());
 		}
-		/**/
 		results.addNote("optimizing index");
 		//response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<optimize />", logger);
 		//if (!response.isSuccess()){
@@ -98,7 +81,6 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 			results.addNote("Error optimizing biblio2 index");
 		}
 		
-		/*
 		if (checkMarcImport()){
 			results.addNote("index passed checks, swapping cores so new index is active.");
 			response = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
@@ -110,7 +92,6 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 		}else{
 			results.addNote("index did not pass check, not swapping");
 		}
-		*/
 		results.saveResults();
 	}
 
@@ -132,7 +113,6 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 					SolrInputDocument doc = recordInfo.getSolrDocument();
 					if (doc != null){
 						//Post to the Solr instance
-						///////logger.debug(doc);
 						updateServer.add(doc);
 						//updateServer.add(doc, 60000);
 						results.incAdded();
@@ -154,20 +134,8 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 						results.incErrors();
 						return false;
 					}
-				/*
-				} catch (SolrServerException e) {
-					results.addNote("SolrServerException for record " + recordInfo.getId() + " " + e.toString());
-					logger.error("SolrServerException for record " + recordInfo.getId() + " " + e.toString());
-					e.printStackTrace();
-					return false;
-				} catch (IOException e) {
-					results.addNote("IOException for record " + recordInfo.getId() + " " + e.toString());
-					logger.error("IOException for record " + recordInfo.getId() + " " + e.toString());
-					e.printStackTrace();
-					return false;*/
 				} catch (Exception e) {
 					results.addNote("Error creating xml doc for record " + recordInfo.getId() + " " + e.toString());
-					logger.error("Error creating xml doc for record " + recordInfo.getId() + " " + e.toString());
 					e.printStackTrace();
 					return false;
 				}

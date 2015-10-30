@@ -1,7 +1,7 @@
 package org.econtent;
 
 public class OverDriveAvailabilityInfo {
-	private long libraryId;
+	private long libraryId = -1;
 	private int copiesOwned;
 	private int numHolds;
 	private int availableCopies;

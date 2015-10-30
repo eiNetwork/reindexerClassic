@@ -3363,7 +3363,6 @@ public class MarcRecordDetails {
 			Object value = allFields.get(fieldName);
 			doc.addField(fieldName, value);
 		}
-		doc.addField("fullrecord", writeXml(this.record));
 		return doc;
 	}
 
@@ -3537,7 +3536,7 @@ public class MarcRecordDetails {
 		if (formats.size() > 0){
 			String firstFormat = formats.iterator().next();
 			addField(mappedFields, "format_category", "format_category_map", firstFormat);
-			//BJP//addField(mappedFields, "format_boost", "format_boost_map", firstFormat);
+			addField(mappedFields, "format_boost", "format_boost_map", firstFormat);
 		}
 		//Load device compatibility
 		addFields(mappedFields, "econtent_device", "device_compatibility_map", formats);
@@ -3548,8 +3547,8 @@ public class MarcRecordDetails {
 		//logger.debug("The record is available at " + availableAt.size() + " libraries");
 		addFields(mappedFields, "available_at", null, availableAt);
 		
-		//BJP//addField(mappedFields, "rating", getEContentRating(econtentRecordId));
-		//BJP//addFields(mappedFields, "rating_facet", null, getEContentRatingFacet(econtentRecordId));
+		addField(mappedFields, "rating", getEContentRating(econtentRecordId));
+		addFields(mappedFields, "rating_facet", null, getEContentRatingFacet(econtentRecordId));
 		
 		addField(mappedFields, "recordtype", "econtentRecord");
 		
@@ -3563,7 +3562,7 @@ public class MarcRecordDetails {
 			}
 		}
 		
-		doc.addField("fullrecord", writeXml(this.record));
+		//logger.debug(doc.toString());
 		return doc;
 	}
 

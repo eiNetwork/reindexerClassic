@@ -136,13 +136,12 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		localWebDir = configIni.get("Site", "local");
 		
 		//Initialize the updateServer
-		//try {
-		//updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/econtent2", 500, 10);
-		updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/biblio2", 500, 10);
-		//} catch (MalformedURLException e) {
+		try {
+			updateServer = new ConcurrentUpdateSolrServer("http://localhost:" + solrPort + "/solr/econtent2", 500, 10);
+		} catch (MalformedURLException e) {
 			// TODO Auto-generated catch block
-		//	e.printStackTrace();
-		//}
+			e.printStackTrace();
+		}
 		
 		//Check to see if we should clear the existing index
 		String clearEContentRecordsAtStartOfIndexVal = configIni.get("Reindex", "clearEContentRecordsAtStartOfIndex");
@@ -156,8 +155,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (clearEContentRecordsAtStartOfIndex){
 			logger.info("Clearing existing econtent records from index");
 			results.addNote("clearing existing econtent records");
-			//URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
+			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/?commit=true", "<delete><query>recordtype:econtentRecord</query></delete>", logger);
 			if (!response.isSuccess()){
 				results.addNote("Error clearing existing econtent records " + response.getMessage());
 			}
@@ -212,7 +210,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			getAllOverDriveTitles = reindexerConn.prepareStatement("SELECT * FROM externalData", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getExternalData = reindexerConn.prepareStatement("SELECT * FROM externalData WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getIndexedMetaData = reindexerConn.prepareStatement("SELECT * FROM indexedMetaData WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			getExternalFormats = reindexerConn.prepareStatement("SELECT externalFormats.id AS id, externalDataId, formatId, formatLink, dateAdded, dateUpdated, sourceId, externalFormatId, externalFormatName, externalFormatNumber, displayFormat FROM externalFormats JOIN format ON (externalFormats.formatId=format.id) WHERE externalFormats.id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getExternalFormats = reindexerConn.prepareStatement("SELECT externalFormatId, externalDataId, formatId, formatLink, dateAdded, dateUpdated, sourceId, externalFormatId, externalFormatName, externalFormatNumber, displayFormat FROM externalFormats JOIN format ON (externalFormats.formatId=format.id) WHERE externalFormats.externalDataId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getMarcMap = reindexerConn.prepareStatement("SELECT * FROM marcMap WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			updateExternalDataIDs = reindexerConn.prepareStatement("UPDATE externalData SET recordid = ?, ilsid = ? WHERE id = ?");
 			
@@ -288,13 +286,17 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			
 			// execute the query
 			ResultSet products = getAllOverDriveTitles.executeQuery();
+			int numLoaded = 0;
 			while( products.next() ){
 				OverDriveRecordInfo curRecord = loadOverDriveRecordFromDB(products);
 				if( curRecord != null ) {
 					logger.debug("Loading record " + curRecord.getId());
 					overDriveTitles.put(curRecord.getId(), curRecord);
+					numLoaded++;
 				}
 			}
+			// BP ==> Baked in library name so it matches our previous reindexing stats workflow for the help desk
+			logger.info("Carnegie Library of Pittsburgh (PA) collection has " + numLoaded + " products in it. Count from Reindexer DB.");
 			products.close();
 		} catch (Exception e) {
 			results.addNote("error loading information from OverDrive Database " + e.toString());
@@ -317,24 +319,28 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			// grab the formats and metadata for this record
 			getIndexedMetaData.setInt(1, titleResults.getInt("id"));
 			ResultSet metaData = getIndexedMetaData.executeQuery();
-			metaData.next();
-			getExternalFormats.setInt(1, titleResults.getInt("id"));
-			ResultSet formats = getExternalFormats.executeQuery();
-			
-			curRecord.setTitle(metaData.getString("title"));
-			curRecord.setSortTitle(metaData.getString("title_sort"));
-			/*****curRecord.setMediaType(curProduct.getString("mediaType"));/*****/
-			curRecord.setSeries(metaData.getString("series"));
-			//BA+++Author ok for Marc?
-			curRecord.setAuthor(metaData.getString("author"));
-			
-			while ( formats.next() ){
-				curRecord.getFormats().add(formats.getString("formatId"));
+			if(metaData.next()) {
+				getExternalFormats.setInt(1, titleResults.getInt("id"));
+				ResultSet formats = getExternalFormats.executeQuery();
+				
+				curRecord.setTitle(metaData.getString("title"));
+				curRecord.setSortTitle(metaData.getString("title_sort"));
+				/*****curRecord.setMediaType(curProduct.getString("mediaType"));/*****/
+				curRecord.setSeries(metaData.getString("series"));
+				//BA+++Author ok for Marc?
+				curRecord.setAuthor(metaData.getString("author"));
+				
+				while ( formats.next() ){
+					curRecord.getFormats().add(formats.getString("formatId"));
+				}
+				curRecord.setCoverImage(metaData.getString("thumbnail"));
+				metaData.close();
+				formats.close();
+				/*****curRecord.getCollections().add(getLibraryIdForOverDriveAccount(libraryName));/*****/
+			} else {
+				logger.error("No metadata to load");
+				return null;
 			}
-			curRecord.setCoverImage(metaData.getString("thumbnail"));
-			metaData.close();
-			formats.close();
-			/*****curRecord.getCollections().add(getLibraryIdForOverDriveAccount(libraryName));/*****/
 		} catch ( SQLException e ) {
 			logger.error("Error loading title " + curRecord.getId() + " from database " + e.toString());
 			return null;
@@ -377,19 +383,32 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			//logger.debug("Setting up overDriveInfo object");
 			overDriveInfo.setEdition(data.getString("edition"));
 			overDriveInfo.setPublisher(data.getString("publisher"));
-			overDriveInfo.setPublishDate(data.getLong("publishDate"));
+			//overDriveInfo.setPublishDate(data.getLong("publishDate"));
+			if( data.getString("publishDate") != null )
+			{
+				try {
+					SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd");
+					Date datePublished = formatter2.parse(data.getString("publishDate").substring(0, 10));
+					overDriveInfo.setPublishDate(datePublished.getTime());
+				} catch (ParseException e) {
+					logger.error("Exception parsing " + data.getString("publishDate"));
+				}
+			}
 
-			JSONArray languages = new JSONArray( data.getString("language") );
-			for (int i = 0; i < languages.length(); i++){
-				JSONObject language = languages.getJSONObject(i);
-				overDriveInfo.getLanguages().add(language.getString("name"));
+			if( data.getString("language") != null )
+			{
+				JSONArray languages = new JSONArray( data.getString("language") );
+				for (int i = 0; i < languages.length(); i++){
+					JSONObject language = languages.getJSONObject(i);
+					overDriveInfo.getLanguages().add(language.getString("name"));
+				}
 			}
 			//logger.debug("Set languages");
 			
 			while (format.next()){
 				OverDriveItem curItem = new OverDriveItem();
 				//logger.debug("Create new overdrive item");
-				curItem.setFormatId(format.getString("id"));
+				curItem.setFormatId(format.getString("externalFormatId"));
 				//logger.debug("format id " + format.getString("id"));
 				curItem.setFormat(format.getString("externalFormatName"));
 				//logger.debug("format name " + format.getString("name"));
@@ -467,7 +486,17 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 							//logger.debug("Record is unchanged, but the record does not exist in the eContent database.");
 						}else{
 							EcontentRecordInfo existingRecordInfo = existingEcontentIlsIds.get(recordInfo.getId());
-							if (existingRecordInfo.getNumItems() == 0){
+							if (checkOverDrive && existingRecordInfo.getNumItems() == 0){
+								existingEcontentIlsIds.remove(recordInfo.getId());
+								/**/
+								logger.debug("Skipping because the record has no items");
+								results.incSkipped();
+								/**
+								logger.debug("Deleting the record because it has no items");
+								removeEContentRecordFromDb(recordInfo.getExternalId());
+								results.incDeleted();
+								/**/
+								return false;
 								//logger.debug("Record is unchanged, but there are no items so indexing to try to get items.");
 							}else if (!existingRecordInfo.getStatus().equalsIgnoreCase("active")){
 								//logger.debug("Record is unchanged, is not active indexing to correct the status.");
@@ -612,19 +641,20 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		updateEContentRecord.setInt(curField++, recordInfo.hasItemLevelOwnership());
 		updateEContentRecord.setString(curField++, Util.getCRSeparatedString(recordInfo.getMappedField("series")));
 		updateEContentRecord.setLong(curField++, eContentRecordId);
-			//BA++ 1 = successful update   else = no update/failed
-			int rowUpdated = updateEContentRecord.executeUpdate();
-			if (rowUpdated != 0){
-				logger.debug("Record updated " + eContentRecordId + " for id " + ilsId + " in the database.");
-				recordUpdated = true;
-				results.incUpdated();
-				results.addNote("Record updated " + eContentRecordId + " for id " + ilsId);
-			}else{
-				logger.debug("Could not update record " + eContentRecordId + " for id " + ilsId);
-				recordUpdated = false;
-				results.incErrors();
-				results.addNote("Could not update record " + eContentRecordId + " for id " + ilsId);
-			}		
+		//BA++ 1 = successful update   else = no update/failed
+	
+		int rowUpdated = updateEContentRecord.executeUpdate();
+		if (rowUpdated != 0){
+			logger.debug("Record updated " + eContentRecordId + " for id " + ilsId + " in the database.");
+			recordUpdated = true;
+			results.incUpdated();
+			results.addNote("Record updated " + eContentRecordId + " for id " + ilsId);
+		}else{
+			logger.debug("Could not update record " + eContentRecordId + " for id " + ilsId);
+			recordUpdated = false;
+			results.incErrors();
+			results.addNote("Could not update record " + eContentRecordId + " for id " + ilsId);
+		}		
 		return recordUpdated;
 	}
 
@@ -832,8 +862,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					duplicateRecords.add(recordInfo.getId());
 					return false;
 				}else{
-					processedOverDriveRecords.put("overDriveId", recordInfo.getId());
-					overDriveTitles.remove(overDriveInfo.getId());
+					processedOverDriveRecords.put(overDriveId, overDriveId);
+					overDriveTitles.remove(overDriveId);
 					addOverdriveItemsAndAvailability(overDriveInfo, eContentRecordId);
 					return true;
 				}
@@ -851,6 +881,19 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		//logger.debug("Adding overdrive items and availability");
 		loadOverDriveMetaData(overDriveInfo);
 		logger.debug("loaded meta data, found " + overDriveInfo.getItems().size() + " items.");
+		
+		// get the list of current formats in case we need to clear any of them
+		HashSet<Long> idsToRemove = new HashSet<Long>();
+		try {
+			existingEContentRecordLinks.setLong(1, eContentRecordId);
+			ResultSet rs = existingEContentRecordLinks.executeQuery();			
+			while( rs.next() ) {
+				idsToRemove.add(rs.getLong(1));
+			}
+		} catch (SQLException e) {
+			logger.debug("SQLException loading current formats: " + e.getMessage());
+		}
+		
 		for (OverDriveItem curItem : overDriveInfo.getItems().values()){
 			try {
 				//BA+++ Update OverDrive Record - add Author from loadMetaData
@@ -871,6 +914,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					updateOverDriveItem.setLong(9, new Date().getTime());
 					updateOverDriveItem.setLong(10, existingItemId);
 					updateOverDriveItem.executeUpdate();
+					
+					idsToRemove.remove(existingItemId);
 				}else{
 					//the url does not exist, insert it
 					addOverDriveItem.setLong(1, eContentRecordId);
@@ -894,6 +939,18 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				results.addNote("Error adding item to overdrive record " + eContentRecordId + " " + overDriveInfo.getId() + " " + e.toString());
 				results.incErrors();
 			}
+		}
+		
+		// remove formats no longer available on overdrive
+		try {
+			if( !overDriveInfo.getItems().isEmpty() ) {
+				for( Long removeID : idsToRemove) {
+					deleteEContentItem.setLong(1, removeID);
+					deleteEContentItem.executeUpdate();
+				}
+			}
+		} catch (SQLException e) {
+			logger.debug("SQLException removing stale formats: " + e.getMessage());
 		}
 		
 		//BA+++ Add availability
@@ -1016,7 +1073,6 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				//Reindex the record
 				SolrInputDocument doc = createSolrDocForOverDriveRecord(recordInfo, econtentRecordId);
 				updateServer.add(doc);
-
 				
 			} catch (Exception e) {
 				logger.error("Error processing eContent record " + overDriveId , e);
@@ -1032,7 +1088,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		logger.info("add Solr info for OD record " + econtentRecordId);
 		SolrInputDocument doc = new SolrInputDocument();
 		doc.addField("id", "econtentRecord" + econtentRecordId);
-		//BJP//doc.addField("id_sort", "econtentRecord" + econtentRecordId);
+		doc.addField("id_sort", "econtentRecord" + econtentRecordId);
 		
 		doc.addField("collection", "Allegheny County Catalog");
 		int numHoldings = 0;
@@ -1043,23 +1099,31 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (curAvailability != null && curAvailability.isAvailable()){
 			doc.addField("available_at", "Digital Collection");
 		}
-		//BJP//doc.addField("collection_group", "Electronic Access");
+		doc.addField("collection_group", "Electronic Access");
 		if (recordInfo.getLanguages().size() == 0){
-			//BJP//doc.addField("language_boost", "0");
-			//BJP//doc.addField("language_boost_es", "0");
+			doc.addField("language_boost", "0");
+			doc.addField("language_boost_es", "0");
 		}else{
 			for (String curLanguage : recordInfo.getLanguages()){
 				doc.addField("language", curLanguage);
-				//BJP//if (curLanguage.equalsIgnoreCase("English")){
-				//BJP//	doc.addField("language_boost", "300");
-				//BJP//	doc.addField("language_boost_es", "0");
-				//BJP//}else if (curLanguage.equalsIgnoreCase("Spanish")){
-				//BJP//	doc.addField("language_boost", "0");
-				//BJP//	doc.addField("language_boost_es", "300");
-				//BJP//}else{
-				//BJP//	doc.addField("language_boost", "0");
-				//BJP//	doc.addField("language_boost_es", "0");
-				//BJP//}
+				/***
+				if (curLanguage.equalsIgnoreCase("English")){
+					doc.addField("language_boost", "300");
+					doc.addField("language_boost_es", "0");
+				}else if (curLanguage.equalsIgnoreCase("Spanish")){
+					doc.addField("language_boost", "0");
+					doc.addField("language_boost_es", "300");
+				}else{
+					doc.addField("language_boost", "0");
+					doc.addField("language_boost_es", "0");
+				}
+				/***/
+				if (curLanguage.equalsIgnoreCase("English")){
+					doc.addField("language_boost", "300");
+				}else if (curLanguage.equalsIgnoreCase("Spanish")){
+					doc.addField("language_boost_es", "300");
+				}
+				/***/
 			}
 		}
 		
@@ -1087,6 +1151,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					}
 				}
 			}
+			/***
 			String devicesForFormat = marcProcessor.findMap("device_compatibility_map").get(curItem.getFormat().replace(" ", "_"));
 			if (devicesForFormat != null){
 				String[] devices = devicesForFormat.split("\\|");
@@ -1094,11 +1159,14 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					econtentDevices.add(device);
 				}
 			}
+			***/
 		}
+		/***
 		if (firstFormat != null){
-			//BJP//doc.addField("format_boost", marcProcessor.findMap("format_boost_map").get(firstFormat));
+			doc.addField("format_boost", marcProcessor.findMap("format_boost_map").get(firstFormat));
 			doc.addField("format_category", marcProcessor.findMap("format_category_map").get(firstFormat));
 		}
+		***/
 		doc.addField("author", recordInfo.getAuthor());
 		for (String curContributor : recordInfo.getContributors()){
 			doc.addField("author2", curContributor);
@@ -1113,19 +1181,21 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			doc.addField("topic_facet", curSubject);
 		}
 		doc.addField("publisher", recordInfo.getPublisher());
-		SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd");
-		String publishDate = formatter2.format(recordInfo.getPublishDate());
-		if ( publishDate != null && publishDate.length() > 5 ) {
-			publishDate = publishDate.substring(0,4);
+		if( recordInfo.getPublishDate() != null ) {
+			SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd");
+			String publishDate = formatter2.format(recordInfo.getPublishDate());
+			if ( publishDate != null && publishDate.length() > 5 ) {
+				publishDate = publishDate.substring(0,4);
+			}
+			doc.addField("publishDate", publishDate);
+			doc.addField("publishDateSort", recordInfo.getPublishDate());
+			//BA+++  date_added, time_since_added
+			doc.addField("date_added", getDateAdded(recordInfo.getPublishDate()));
+			doc.addField("time_since_added", getTimeSinceAddedForDate(new Date(recordInfo.getPublishDate())));
 		}
-		doc.addField("publishDate", publishDate);
-		doc.addField("publishDateSort", recordInfo.getPublishDate());
 		doc.addField("edition", recordInfo.getEdition());
 		doc.addField("description", recordInfo.getDescription());
 		doc.addField("series", recordInfo.getSeries());
-		//BA+++  date_added, time_since_added
-		doc.addField("date_added", getDateAdded(recordInfo.getPublishDate()));
-		doc.addField("time_since_added", getTimeSinceAddedForDate(new Date(recordInfo.getPublishDate())));
 		//Deal with always available titles by reducing hold count
 		if (numHoldings > 1000){
 			numHoldings = 5;
@@ -1142,15 +1212,17 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("econtent_source", "OverDrive");
 		doc.addField("econtent_protection_type", "external");
 		doc.addField("recordtype", "econtentRecord");
-		Float rating = marcProcessor.getEcontentRatings().get(econtentRecordId);
+		Float rating = null; //***marcProcessor.getEcontentRatings().get(econtentRecordId);
 		if (rating == null) {
 			rating = -2.5f;
 		}
-		//BJP//doc.addField("rating", Float.toString(rating));
-		//BJP//Set<String> ratingFacets = marcProcessor.getGetRatingFacet(rating);
-		//BJP//for (String ratingFacet : ratingFacets){
-		//BJP//	doc.addField("rating_facet", ratingFacet);
-		//BJP//}
+		doc.addField("rating", Float.toString(rating));
+		/***
+		Set<String> ratingFacets = marcProcessor.getGetRatingFacet(rating);
+		for (String ratingFacet : ratingFacets){
+			doc.addField("rating_facet", ratingFacet);
+		}
+		***/
 		
 		Collection<String> allFieldNames = doc.getFieldNames();
 		StringBuffer fieldValues = new StringBuffer();
@@ -1159,7 +1231,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			fieldValues.append(doc.getFieldValue(fieldName));
 		}
 		doc.addField("allfields", fieldValues.toString());
-		//BJP//doc.addField("keywords", fieldValues.toString());
+		doc.addField("keywords", fieldValues.toString());
 		
 		return doc;
 	}
@@ -1186,7 +1258,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		//BA+++ publishDate	
 		//logger.error("Update Publish Date " + recordInfo.getPublishDate());
 		SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd");
-		String publishDate = formatter2.format(recordInfo.getPublishDate());
+		String publishDate = (recordInfo.getPublishDate() == null) ? null : formatter2.format(recordInfo.getPublishDate());
 		if ( publishDate != null && publishDate.length() > 5 ) {
 			publishDate = publishDate.substring(0,4);
 		}
@@ -1233,7 +1305,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		//BA+++ publishDate
 		//logger.error("Create Publish Date " + recordInfo.getPublishDate());
 		SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd");
-		String publishDate = formatter2.format(recordInfo.getPublishDate());
+		String publishDate = (recordInfo.getPublishDate() == null) ? null : formatter2.format(recordInfo.getPublishDate());
 		if ( publishDate != null && publishDate.length() > 5 ) {
 			publishDate = publishDate.substring(0,4);
 		}
@@ -1308,6 +1380,9 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				addOverDriveTitlesWithoutMarcToIndex();
 			}
 		}
+		
+		// dump out the count of updated records
+		logger.info("loaded " + (overDriveTitles.size() + processedOverDriveRecords.size()) + " overdrive titles unique in shared collection.");
 	
 		//Make sure that the index is good and swap indexes
 		results.addNote("calling final commit on index");
@@ -1316,8 +1391,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		
 		try {
 			results.addNote("calling final commit on index");
-			//URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<commit />", logger);
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<commit />", logger);
+
+			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<commit />", logger);
 			if (!response.isSuccess()){
 				results.incErrors();
 				results.addNote("Error committing changes " + response.getMessage());
@@ -1326,21 +1401,18 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			results.addNote("optimizing econtent2 index");
 			logger.info("optimizing econtent2 index");
 			try {
-				//URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<optimize />", logger);
-				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<optimize />", logger);
+				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/econtent2/update/", "<optimize />", logger);
 				if (!optimizeResponse.isSuccess()){
 					results.addNote("Error optimizing econtent2 index " + optimizeResponse.getMessage());
 				}
 			} catch (Exception e) {	
 				results.addNote("Error optimizing econtent2 index");
 			}
-
-			/*
+						
 			if (checkMarcImport()){
 				results.addNote("index passed checks, swapping cores so new index is active.");
 				logger.info("index passed checks, swapping cores so new index is active.");
-				//URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=econtent2&other=econtent", logger);
-				URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
+				URLPostResponse postResponse = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=econtent2&other=econtent", logger);
 				if (!postResponse.isSuccess()){
 					results.addNote("Error swapping cores " + postResponse.getMessage());
 					logger.info("Error swapping cores " + postResponse.getMessage());					
@@ -1353,7 +1425,6 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				results.addNote("index did not pass check, not swapping");
 				logger.info("index did not pass check, not swapping");
 			}
-			*/
 			
 		} catch (Exception e) {
 			results.addNote("Error finalizing index " + e.toString());

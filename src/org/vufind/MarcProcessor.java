@@ -155,23 +155,19 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 		}
 
 		// Setup where to look for translation maps
-		//SITE//propertyFilePaths = new String[] { "../../sites/" + serverName + "/translation_maps", "../../sites/default/translation_maps" };
-		//SITE//scriptFilePaths = new String[] { "../../sites/" + serverName + "/index_scripts", "../../sites/default/index_scripts" };
-		propertyFilePaths = new String[] { "translation_maps" };
-		scriptFilePaths = new String[] { "index_scripts" };
+		propertyFilePaths = new String[] { "../../sites/" + serverName + "/translation_maps", "../../sites/default/translation_maps" };
+		scriptFilePaths = new String[] { "../../sites/" + serverName + "/index_scripts", "../../sites/default/index_scripts" };
 		logger.info("Loading marc properties");
 		// Load default marc.properties and marc properties for site into Properties
 		// Object
 		Properties marcProperties = new Properties();
 		try {
-			//SITE//File marcPropertiesFile = new File("../../sites/default/conf/marc.properties");
-			File marcPropertiesFile = new File("../conf/marc.properties");
+			File marcPropertiesFile = new File("../../sites/default/conf/marc.properties");
 
 			marcProperties.load(new FileReader(marcPropertiesFile));
 			logger.info("Finished reading marc properties file, found " + marcFieldProps.keySet().size() + " entries");
 			if (serverName != null) {
-				//SITE//File marcLocalPropertiesFile = new File("../../sites/" + serverName + "/conf/marc_local.properties");
-				File marcLocalPropertiesFile = new File("../conf/marc_local.properties");
+				File marcLocalPropertiesFile = new File("../../sites/" + serverName + "/conf/marc_local.properties");
 				if (marcLocalPropertiesFile.exists()) {
 					marcProperties.load(new FileReader(marcLocalPropertiesFile));
 				}

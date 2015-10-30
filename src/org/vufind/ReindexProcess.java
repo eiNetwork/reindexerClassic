@@ -93,6 +93,8 @@ public class ReindexProcess {
 			indexSettings = args[1];
 		}
 		
+		logger.debug("test debug 123");
+		
 		initializeReindex();
 		
 		// Runs the export process to extract marc records from the ILS (if applicable)
@@ -121,8 +123,35 @@ public class ReindexProcess {
 				//Do processing of resources as needed (for extraction of resources).
 				processResources(recordProcessors);
 										
+				int errorCount = 0, processedCount = 0;
+				ProcessorResults firstResults = null;
 				for (IRecordProcessor processor : recordProcessors){
 					processor.finish();
+					ProcessorResults results = processor.getResults();
+					if( results != null ) {
+						if( firstResults == null ) {
+							firstResults = results;
+						}
+						errorCount += results.getNumErrors();
+						processedCount += results.getNumErrors();
+					}
+				}
+				
+				// swap cores if needed
+				if( firstResults != null ) {
+					//Do not pass the import if more than 1% of the records have errors 
+					if (errorCount <= processedCount * .01){
+						firstResults.addNote("index passed checks, swapping cores so new index is active.");
+						URLPostResponse response = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
+						if (!response.isSuccess()){
+							firstResults.addNote("Error swapping cores " + response.getMessage());
+						}else{
+							firstResults.addNote("Result of swapping cores " + response.getMessage());
+						}
+					}else{
+						firstResults.addNote("index did not pass check, not swapping");
+					}
+					firstResults.saveResults();
 				}
 				
 				//BA+++ added to cleanup dependent records from delete of items in econtent_record not in Marc or Overdrive
@@ -148,18 +177,24 @@ public class ReindexProcess {
 		logger.info("Reloading schemas from default");
 		try {
 			//Copy default schemas from biblio to biblio2 and econtent
-			logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/biblio2/conf/schema.xml");
-			if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/biblio2/conf/schema.xml"))){
+			//SITE//logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/biblio2/conf/schema.xml");
+			//SITE//if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/biblio2/conf/schema.xml"))){
+			logger.debug("Copying " + "../solr/biblio/conf/schema.xml" + " to " + "../solr/biblio2/conf/schema.xml");
+			if (!Util.copyFile(new File("../solr/biblio/conf/schema.xml"), new File("../solr/biblio2/conf/schema.xml"))){
 				logger.info("Unable to copy schema to biblio2");
 				addNoteToCronLog("Unable to copy schema to biblio2");
 			}
-			logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/econtent/conf/schema.xml");
-			if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/econtent/conf/schema.xml"))){
+			//SITE//logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/econtent/conf/schema.xml");
+			//SITE//if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/econtent/conf/schema.xml"))){
+			logger.debug("Copying " + "../solr/biblio/conf/schema.xml" + " to " + "../solr/econtent/conf/schema.xml");
+			if (!Util.copyFile(new File("../solr/biblio/conf/schema.xml"), new File("../solr/econtent/conf/schema.xml"))){
 				logger.info("Unable to copy schema to econtent");
 				addNoteToCronLog("Unable to copy schema to econtent");
 			}
-			logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/econtent2/conf/schema.xml");
-			if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/econtent2/conf/schema.xml"))){
+			//SITE//logger.debug("Copying " + "../../sites/default/solr/biblio/conf/schema.xml" + " to " + "../../sites/default/solr/econtent2/conf/schema.xml");
+			//SITE//if (!Util.copyFile(new File("../../sites/default/solr/biblio/conf/schema.xml"), new File("../../sites/default/solr/econtent2/conf/schema.xml"))){
+			logger.debug("Copying " + "../solr/biblio/conf/schema.xml" + " to " + "../solr/econtent2/conf/schema.xml");
+			if (!Util.copyFile(new File("../solr/biblio/conf/schema.xml"), new File("../solr/econtent2/conf/schema.xml"))){
 				logger.info("Unable to copy schema to econtent");
 				addNoteToCronLog("Unable to copy schema to econtent");
 			}
@@ -180,6 +215,8 @@ public class ReindexProcess {
 	}
 
 	private static void reloadSchema(String schemaName) {
+		//SITE//
+		/*
 		boolean reloadIndex = true;
 		addNoteToCronLog("Reloading Schema " + schemaName);
 		try {
@@ -212,6 +249,8 @@ public class ReindexProcess {
 				addNoteToCronLog("Error reloading default schema for " + schemaName + " " + response.getMessage());
 			}
 		}
+		*/
+		//SITE//
 	}
 
 	private static ArrayList<IRecordProcessor> loadRecordProcesors(){
@@ -447,29 +486,34 @@ public class ReindexProcess {
 
 	private static void initializeReindex() {
 		// Delete the existing reindex.log file
-		File solrmarcLog = new File("../../sites/" + serverName + "/logs/reindex.log");
+		//SITE//File solrmarcLog = new File("../../sites/" + serverName + "/logs/reindex.log");
+		File solrmarcLog = new File("../logs/reindex.log");
 		if (solrmarcLog.exists()){
 			solrmarcLog.delete();
 		}
 		for (int i = 1; i <= 10; i++){
-			solrmarcLog = new File("../../sites/" + serverName + "/logs/reindex.log." + i);
+			//SITE//solrmarcLog = new File("../../sites/" + serverName + "/logs/reindex.log." + i);
+			solrmarcLog = new File("../logs/reindex.log." + i);
 			if (solrmarcLog.exists()){
 				solrmarcLog.delete();
 			}
 		}
-		solrmarcLog = new File("solrmarc.log");
+		//SITE//solrmarcLog = new File("solrmarc.log");
+		solrmarcLog = new File("../logs/solrmarc.log");
 		if (solrmarcLog.exists()){
 			solrmarcLog.delete();
 		}
 		for (int i = 1; i <= 4; i++){
-			solrmarcLog = new File("solrmarc.log." + i);
+			//SITE//solrmarcLog = new File("solrmarc.log." + i);
+			solrmarcLog = new File("../logs/solrmarc.log." + i);
 			if (solrmarcLog.exists()){
 				solrmarcLog.delete();
 			}
 		}
 		
 		// Initialize the logger
-		File log4jFile = new File("../../sites/" + serverName + "/conf/log4j.reindex.properties");
+		//SITE//File log4jFile = new File("../../sites/" + serverName + "/conf/log4j.reindex.properties");
+		File log4jFile = new File("log4j.properties");
 		if (log4jFile.exists()) {
 			PropertyConfigurator.configure(log4jFile.getAbsolutePath());
 		} else {
@@ -484,10 +528,12 @@ public class ReindexProcess {
 		
 		if (indexSettings != null){
 			logger.info("Loading index settings from override file " + indexSettings);
-			String indexSettingsName = "../../sites/" + serverName + "/conf/" + indexSettings + ".ini";
+			//SITE//String indexSettingsName = "../../sites/" + serverName + "/conf/" + indexSettings + ".ini";
+			String indexSettingsName = "../conf/" + indexSettings + ".ini";
 			File indexSettingsFile = new File(indexSettingsName);
 			if (!indexSettingsFile.exists()) {
-				indexSettingsName = "../../sites/default/conf/" + indexSettings + ".ini";
+				//SITE//indexSettingsName = "../../sites/default/conf/" + indexSettings + ".ini";
+				indexSettingsName = "../conf/" + indexSettings + ".ini";
 				indexSettingsFile = new File(indexSettingsName);
 				if (!indexSettingsFile.exists()) {
 					logger.error("Could not find indexSettings file " + indexSettings);
@@ -657,7 +703,8 @@ public class ReindexProcess {
 	
 	private static Ini loadConfigFile(String filename){
 		//First load the default config file 
-		String configName = "../../sites/default/conf/" + filename;
+		//SITE//String configName = "../../sites/default/conf/" + filename;
+		String configName = "../conf/" + filename;
 		logger.info("Loading configuration from " + configName);
 		File configFile = new File(configName);
 		if (!configFile.exists()) {
@@ -678,7 +725,8 @@ public class ReindexProcess {
 		}
 		
 		//Now override with the site specific configuration
-		String siteSpecificFilename = "../../sites/" + serverName + "/conf/" + filename;
+		//SITE//String siteSpecificFilename = "../../sites/" + serverName + "/conf/" + filename;
+		String siteSpecificFilename = "../conf/" + filename;
 		logger.info("Loading site specific config from " + siteSpecificFilename);
 		File siteSpecificFile = new File(siteSpecificFilename);
 		if (!siteSpecificFile.exists()) {

@@ -311,6 +311,7 @@ public class Util {
 	public static URLPostResponse postToURL(String url, String postData, Logger logger) {
 		URLPostResponse retVal;
 		
+		/***/
 		HttpURLConnection conn = null;
 		try {
 			URL emptyIndexURL = new URL(url);
@@ -382,6 +383,7 @@ public class Util {
 			if (conn != null) conn.disconnect();
 		}
 		return retVal;
+		/***/
 	}
 
 	public static boolean deleteDirectory(File dirToDelete) {

@@ -338,6 +338,7 @@ public class UpdateResourceInformation implements IMarcRecordProcessor, IEConten
 
 	private Long addResourceToDb(MarcRecordDetails recordInfo, Logger logger, Long resourceId) throws SQLException {
 		String author = recordInfo.getAuthor();
+		/***** NO_DB
 		// Update resource SQL
 		resourceInsertStmt.setString(1, Util.trimTo(200, recordInfo.getTitle()));
 		resourceInsertStmt.setString(2, Util.trimTo(200, recordInfo.getSortTitle()));
@@ -366,6 +367,8 @@ public class UpdateResourceInformation implements IMarcRecordProcessor, IEConten
 			}
 			insertedResourceIds.close();
 		}
+		*****/
+		results.incAdded();
 		return resourceId;
 	}
 
@@ -538,6 +541,7 @@ public class UpdateResourceInformation implements IMarcRecordProcessor, IEConten
 			}else{
 				//Insert a new resource
 				
+				/***** NO_DB 
 				addResourceStmt.setString(1, econtentId);
 				addResourceStmt.setString(2, Util.trimTo(255, title));
 				addResourceStmt.setString(3, "eContent");
@@ -559,6 +563,9 @@ public class UpdateResourceInformation implements IMarcRecordProcessor, IEConten
 					System.out.println("Adding resource for eContentRecord " + econtentId);
 					results.incAdded();
 				}
+				*****/
+				System.out.println("Skipping resource for eContentRecord " + econtentId);
+				results.incAdded();
 			}
 			existingResource.close();
 			return true;

@@ -136,6 +136,9 @@ public class OverDriveRecordInfo {
 	public HashSet<String> getContributors() {
 		return contributors;
 	}
+	public void setSubjects(HashSet<String> subjects) {
+		this.subjects = subjects;
+	}
 	public HashSet<String> getSubjects() {
 		return subjects;
 	}

@@ -3358,7 +3358,7 @@ public class MarcRecordDetails {
 
 	public SolrInputDocument getSolrDocument() {
 		SolrInputDocument doc = new SolrInputDocument();
-		HashMap <String, Object> allFields = getFields("getSolrDocument");
+		HashMap <String, Object> allFields = getFields("getSolrDocument");		boolean KILL = false; 
 		for (String fieldName : allFields.keySet()){
 			Object value = allFields.get(fieldName);
 			doc.addField(fieldName, value);

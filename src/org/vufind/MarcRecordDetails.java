@@ -3022,18 +3022,25 @@ public class MarcRecordDetails {
 		}
 
 		if (!suppressRecord) {
-			// Now, check for manually suppressed record where the 907c tag is set to
-			// W
+			// Now, check for manually suppressed record where the bib suppression tag specified in mar_local.properties
+			// Updated to support multiple bcode3 values that can be suppressed -- currently n and i
+			// Note this does not support multiple MARC fields each with different values for suppression 
 			if (manualSuppressionField != null && !manualSuppressionField.equals("null")) {
 				Set<String> input2 = getFieldList(record, manualSuppressionField);
 				Iterator<String> iter2 = input2.iterator();
 				suppressRecord = false;
 				while (iter2.hasNext()) {
 					String curCode = iter2.next();
-			        if (curCode.trim().equalsIgnoreCase(manualSuppressionValue.trim())) {				
-						//logger.debug("Suppressing due to manual suppression field " + curCode + " matched " + manualSuppressionValue);
-						suppressRecord = true;
-						break;
+					Set<String> input3 = new HashSet<String>(Arrays.asList(manualSuppressionValue.split(":")));
+					Iterator<String> iter3 = input3.iterator();
+					while (iter3.hasNext()) {
+						String suppressCode = iter3.next();
+						//logger.debug("Checking suppression for " + curCode + " matching " + suppressCode);
+						if (curCode.trim().equalsIgnoreCase(suppressCode)) {				
+							//logger.debug("Suppressing due to manual suppression field " + curCode + " matched " + suppressCode);
+							suppressRecord = true;
+							break;
+						}
 					}
 				}
 			}

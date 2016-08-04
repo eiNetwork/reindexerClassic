@@ -66,7 +66,6 @@ public class ReindexProcess {
 	
 	//Database connections and prepared statements
 	private static Connection vufindConn = null;
-	private static Connection econtentConn = null;
 	private static Connection reindexerConn = null;
 	
 	private static PreparedStatement updateCronLogLastUpdatedStmt;
@@ -154,7 +153,7 @@ public class ReindexProcess {
 				
 				//BA+++ added to cleanup dependent records from delete of items in econtent_record not in Marc or Overdrive
 				if ( isDeleteERecordsinDBNotinMarcOrOD() ) {
-					DeleteDependentRecords delRecs = new DeleteDependentRecords(logger, econtentConn, vufindConn);
+					DeleteDependentRecords delRecs = new DeleteDependentRecords(logger, vufindConn);
 					delRecs.ExecuteDeletes();
 				}				
 			}
@@ -201,7 +200,7 @@ public class ReindexProcess {
 		if (updateSolr){
 			MarcIndexer marcIndexer = new MarcIndexer();
 			addNoteToCronLog("Initializing MarcIndexer");
-			if (marcIndexer.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, logger)){
+			if (marcIndexer.init(configIni, serverName, reindexLogId, vufindConn, logger)){
 				supplementalProcessors.add(marcIndexer);
 			}else{
 				logger.error("Could not initialize marcIndexer");
@@ -211,7 +210,7 @@ public class ReindexProcess {
 		if (updateResources){
 			addNoteToCronLog("Initializing UpdateResourceInformation");
 			UpdateResourceInformation resourceUpdater = new UpdateResourceInformation();
-			if (resourceUpdater.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, logger)){
+			if (resourceUpdater.init(configIni, serverName, reindexLogId, vufindConn, logger)){
 				supplementalProcessors.add(resourceUpdater);
 			}else{
 				logger.error("Could not initialize resourceUpdater");
@@ -221,7 +220,7 @@ public class ReindexProcess {
 		if (loadEContentFromMarc){
 			addNoteToCronLog("Initializing ExtractEContentFromMarc");
 			ExtractEContentFromMarc econtentExtractor = new ExtractEContentFromMarc();
-			if (econtentExtractor.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, reindexerConn, logger)){
+			if (econtentExtractor.init(configIni, serverName, reindexLogId, vufindConn, reindexerConn, logger)){
 				supplementalProcessors.add(econtentExtractor);
 				if ( isDeleteERecordsinDBNotinMarcOrOD() ) {
 					int delRecs = econtentExtractor.deleteOverDriveTitlesInDb();
@@ -235,7 +234,7 @@ public class ReindexProcess {
 		if (updateAlphaBrowse){
 			addNoteToCronLog("Initializing AlphaBrowseProcessor");
 			AlphaBrowseProcessor alphaBrowseProcessor = new AlphaBrowseProcessor();
-			if (alphaBrowseProcessor.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, logger)){
+			if (alphaBrowseProcessor.init(configIni, serverName, reindexLogId, vufindConn, logger)){
 				supplementalProcessors.add(alphaBrowseProcessor);
 			}else{
 				logger.error("Could not initialize strandsProcessor");
@@ -315,47 +314,6 @@ public class ReindexProcess {
 		if (econtentProcessors.size() == 0){
 			return;
 		}
-		//Check to see if the record already exists
-		try {
-			int econtentRecordsProcessed = 0;
-			String idFilter = "";
-			if (idsToProcess != null && idsToProcess.length() > 0){
-				idFilter = " AND id REGEXP '" + idsToProcess + "'";
-			}
-			PreparedStatement econtentRecordStatement = econtentConn.prepareStatement("SELECT * FROM econtent_record WHERE status = 'active'" + idFilter, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			ResultSet allEContent = econtentRecordStatement.executeQuery();
-			long indexTime = new Date().getTime() / 1000;
-			while (allEContent.next()){
-				for (IEContentProcessor econtentProcessor : econtentProcessors){
-					//Determine if the record is new, updated, deleted, or unchanged
-					long dateAdded = allEContent.getLong("date_added");
-					long dateUpdated = allEContent.getLong("date_updated");
-					String status = allEContent.getString("status");
-					long recordStatus = MarcProcessor.RECORD_UNCHANGED;
-					if (status.equals("deleted") || status.equals("archived")){
-						recordStatus = MarcProcessor.RECORD_DELETED;
-					}else{
-						if ((indexTime - dateAdded) < 24 * 60 * 60){
-							recordStatus = MarcProcessor.RECORD_NEW;
-						}else if ((indexTime - dateUpdated) < 24 * 60 * 60){
-							recordStatus = MarcProcessor.RECORD_CHANGED_PRIMARY;
-						}else if ((indexTime - dateUpdated) < 48 * 60 * 60){
-							recordStatus = MarcProcessor.RECORD_CHANGED_SECONDARY;
-						}
-					}
-					econtentProcessor.processEContentRecord(allEContent, recordStatus);
-				}
-				econtentRecordsProcessed++;
-				if (econtentRecordsProcessed % 1000 == 0){
-					updateLastUpdateTime();
-				}
-			}
-			allEContent.close();
-		} catch (SQLException ex) {
-			// handle any errors
-			logger.error("Unable to load econtent records from database", ex);
-			addNoteToCronLog("Unable to load econtent records from database " + ex.toString());
-		}
 	}
 
 	private static void processMarcRecords(ArrayList<IRecordProcessor> supplementalProcessors) {
@@ -370,7 +328,7 @@ public class ReindexProcess {
 		}
 		
 		MarcProcessor marcProcessor = new MarcProcessor();
-		marcProcessor.init(serverName, configIni, vufindConn, econtentConn, logger);
+		marcProcessor.init(serverName, configIni, vufindConn, logger);
 		
 		if (supplementalProcessors.size() > 0){
 			logger.info("Processing exported marc records");
@@ -561,18 +519,6 @@ public class ReindexProcess {
 			System.exit(1);
 		}
 		
-		String econtentDBConnectionInfo = Util.cleanIniValue(configIni.get("Database", "database_econtent_jdbc"));
-		if (econtentDBConnectionInfo == null || econtentDBConnectionInfo.length() == 0) {
-			logger.error("Database connection information for eContent database not found in Database Section.  Please specify connection information as database_econtent_jdbc key.");
-			System.exit(1);
-		}
-		try {
-			econtentConn = DriverManager.getConnection(econtentDBConnectionInfo);
-		} catch (SQLException e) {
-			logger.error("Could not connect to econtent database", e);
-			System.exit(1);
-		}
-		
 		String reindexerDBConnectionInfo = Util.cleanIniValue(configIni.get("Database", "database_reindexer_jdbc"));
 		if (reindexerDBConnectionInfo == null || reindexerDBConnectionInfo.length() == 0) {
 			logger.error("Database connection information for reindexer database not found in Database Section.  Please specify connection information as database_reindexer_jdbc key.");
@@ -684,9 +630,6 @@ public class ReindexProcess {
 		}
 		return ini;
 	}
-	public static Connection getEcontentConn(){
-		return econtentConn;
-	}
 	public static Connection getVufindConn(){
 		return vufindConn;
 	}
@@ -720,5 +663,4 @@ public class ReindexProcess {
 	public static boolean isOverDriveAvailabilityAPI() {
 		return OverDriveAvailabilityAPI;
 	}
-	
 }

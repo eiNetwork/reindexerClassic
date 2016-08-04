@@ -77,10 +77,10 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	private HashMap<String, MarcRecordDetails> millenniumRecordsNotInOverDrive = new HashMap<String, MarcRecordDetails>();
 	private HashSet<String> recordsWithoutOverDriveId = new HashSet<String>(); 
 
-	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Connection econtentConn, Logger logger) {
-		return init(configIni, serverName, reindexLogId, vufindConn, econtentConn, null, logger);
+	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Logger logger) {
+		return init(configIni, serverName, reindexLogId, vufindConn, null, logger);
 	}
-	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Connection econtentConn, Connection reindexerConn, Logger logger) {
+	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Connection reindexerConn, Logger logger) {
 		this.logger = logger;
 		//Import a marc record into the eContent core. 
 		if (!loadConfig(configIni, logger)){
@@ -132,7 +132,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			//Connect to the reindexer database
 			getAllOverDriveTitles = reindexerConn.prepareStatement("SELECT * FROM externalData", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getIndexedMetaData = reindexerConn.prepareStatement("SELECT * FROM indexedMetaData WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			getExternalFormats = reindexerConn.prepareStatement("SELECT externalFormatId, externalDataId, formatId, formatLink, dateAdded, dateUpdated, sourceId, externalFormatId, externalFormatName, externalFormatNumber, displayFormat FROM externalFormats JOIN format ON (externalFormats.formatId=format.id) WHERE externalFormats.externalDataId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getExternalFormats = reindexerConn.prepareStatement("SELECT externalFormatId, externalDataId, formatId, formatLink, dateAdded, dateUpdated, sourceId, externalFormatId, externalFormatName, externalFormatNumber, displayFormat, formatCategory FROM externalFormats JOIN format ON (externalFormats.formatId=format.id) WHERE externalFormats.externalDataId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		} catch (Exception ex) {
 			// handle any errors
 			logger.error("Error initializing econtent extraction ", ex);
@@ -206,6 +206,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				curRecord.setAuthor(metaData.getString("author"));
 				
 				while ( formats.next() ){
+					curRecord.setFormatCategory(formats.getString("formatCategory"));
 					curRecord.getFormats().add(formats.getString("formatId"));
 				}
 				curRecord.setCoverImage(metaData.getString("thumbnail"));
@@ -345,7 +346,9 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				
 				//logger.debug("Finished initial insertion/update recordAdded = " + recordAdded);
 				
-				if (!recordAdded){
+				if (recordAdded){
+					//addItemsToEContentRecord(recordInfo, logger, source, detectionSettings, eContentRecordId);
+				}else{
 					logger.debug("Record NOT processed successfully.");
 				}
 			}
@@ -363,6 +366,115 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			}
 		}
 	}
+
+    /*
+	private void addItemsToEContentRecord(MarcRecordDetails recordInfo, Logger logger, String source, DetectionSettings detectionSettings, long eContentRecordId) {
+		//Non threaded implementation for adding items
+		boolean itemsAdded = true;
+		if (source.toLowerCase().startsWith("overdrive")){
+			itemsAdded = setupOverDriveItems(recordInfo, eContentRecordId, detectionSettings, logger);
+		}else if (detectionSettings.isAdd856FieldsAsExternalLinks()){
+			//Automatically setup 856 links as external links
+			setupExternalLinks(recordInfo, eContentRecordId, detectionSettings, logger);
+		}
+		if (itemsAdded){
+			logger.debug("Items added successfully.");
+			reindexRecord(recordInfo, eContentRecordId, logger);
+		};
+	}
+
+	protected synchronized void setupExternalLinks(MarcRecordDetails recordInfo, long eContentRecordId, DetectionSettings detectionSettings, Logger logger) {
+		//Get existing links from the record
+		ArrayList<LinkInfo> allLinks = new ArrayList<LinkInfo>();
+		try {
+			existingEContentRecordLinks.setLong(1, eContentRecordId);
+			ResultSet allExistingUrls = existingEContentRecordLinks.executeQuery();
+			while (allExistingUrls.next()){
+				LinkInfo curLinkInfo = new LinkInfo();
+				curLinkInfo.setItemId(allExistingUrls.getLong("id"));
+				curLinkInfo.setLink(allExistingUrls.getString("link"));
+				curLinkInfo.setLibraryId(allExistingUrls.getLong("libraryId"));
+				curLinkInfo.setItemType(allExistingUrls.getString("item_type"));
+				allLinks.add(curLinkInfo);
+			}
+			allExistingUrls.close();
+		} catch (SQLException e) {
+			results.incErrors();
+			results.addNote("Could not load existing links for eContentRecord " + eContentRecordId);
+			return;
+		}
+		//logger.debug("Found " + allLinks.size() + " existing links");
+		
+		//Add the links that are currently available for the record
+		ArrayList<LibrarySpecificLink> sourceUrls;
+		try {
+			sourceUrls = recordInfo.getSourceUrls();
+		} catch (IOException e1) {
+			results.incErrors();
+			results.addNote("Could not load source URLs for " + recordInfo.getId() + " " + e1.toString());
+			return;
+		}
+		//logger.debug("Found " + sourceUrls.size() + " urls for " + recordInfo.getId());
+		if (sourceUrls.size() == 0){
+			results.addNote("Warning, could not find any urls for " + recordInfo.getId() + " source " + detectionSettings.getSource() + " protection type " + detectionSettings.getAccessType());
+		}
+		for (LibrarySpecificLink curLink : sourceUrls){
+			//Look for an existing link
+			LinkInfo linkForSourceUrl = null;
+			for (LinkInfo tmpLinkInfo : allLinks){
+				if (tmpLinkInfo.getLibraryId() == curLink.getLibrarySystemId()){
+					linkForSourceUrl = tmpLinkInfo;
+				}
+			}
+			addExternalLink(linkForSourceUrl, curLink, eContentRecordId, detectionSettings, logger);
+			if (linkForSourceUrl != null){
+				allLinks.remove(linkForSourceUrl);
+			}
+		}
+		
+		//Remove any links that no longer exist
+		//logger.debug("There are " + allLinks.size() + " links that need to be deleted");
+		for (LinkInfo tmpLinkInfo : allLinks){
+			try {
+				deleteEContentItem.setLong(1, tmpLinkInfo.getItemId());
+				deleteEContentItem.executeUpdate();
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	protected void reindexRecord(MarcRecordDetails recordInfo, final long eContentRecordId, final Logger logger) {
+		//Do direct indexing of the record
+		try {
+			//String xmlDoc = recordInfo.createXmlDoc();
+			getEContentRecordStmt.setLong(1, eContentRecordId);
+			ResultSet eContentRecordRS = getEContentRecordStmt.executeQuery();
+			getItemsForEContentRecordStmt.setLong(1, eContentRecordId);
+			ResultSet eContentItemsRS = getItemsForEContentRecordStmt.executeQuery();
+			getAvailabilityForEContentRecordStmt.setLong(1, eContentRecordId);
+			ResultSet eContentAvailabilityRS = getAvailabilityForEContentRecordStmt.executeQuery();
+			
+			SolrInputDocument doc = recordInfo.getEContentSolrDocument(eContentRecordId, eContentRecordRS, eContentItemsRS, eContentAvailabilityRS);
+			if (doc != null){
+				//Post to the Solr instance
+				//logger.debug("Added document to solr");
+				updateServer.add(doc);
+				//updateServer.add(doc, 60000);
+				//results.incAdded();
+			}else{
+				results.incErrors();
+			}
+			eContentRecordRS.close();
+			eContentItemsRS.close();
+			eContentAvailabilityRS.close();
+		} catch (Exception e) {
+			results.addNote("Error creating xml doc for record " + recordInfo.getId() + " " + e.toString());
+			e.printStackTrace();
+		}
+	}
+	*/
 
 	private long updateAPIDataFromMarc(MarcRecordDetails recordInfo, Logger logger, String source, String accessType, String ilsId, long eContentRecordId)
 			throws SQLException, IOException {
@@ -595,6 +707,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("econtent_source", "OverDrive");
 		doc.addField("econtent_protection_type", "external");
 		doc.addField("recordtype", "EContent");
+		doc.addField("format_category", recordInfo.getFormatCategory());
 		
 		if( recordInfo.getCoverImage() != null && recordInfo.getCoverImage() != "") {
 			doc.addField("thumbnail", recordInfo.getCoverImage());

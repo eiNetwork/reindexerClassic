@@ -14,6 +14,7 @@ public class OverDriveRecordInfo {
 	private String series;
 	private String author;
 	private HashSet<String> formats = new HashSet<String>();
+	private String formatCategory;
 	private String coverImage;
 	//Data from availability call
 	private OverDriveAvailabilityInfo availabilityInfo;
@@ -153,6 +154,12 @@ public class OverDriveRecordInfo {
 	}
 	public String getSortTitle() {
 		return sortTitle;
+	}
+	public String getFormatCategory() {
+		return formatCategory;
+	}
+	public void setFormatCategory(String category) {
+		this.formatCategory = category;
 	}
 	
 }

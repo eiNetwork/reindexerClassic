@@ -1287,9 +1287,9 @@ public class MarcRecordDetails {
 	@SuppressWarnings("unchecked")
 	private boolean finishCustomOrScript(Map<String, Object> indexMap, String indexField, String mapName, Class<?> returnType, Object retval,
 			boolean deleteIfEmpty) {
-		if (returnType == null || retval == null)
+		if (returnType == null || retval == null) {
 			return (deleteIfEmpty);
-		else if (returnType.isAssignableFrom(Map.class)) {
+		} else if (returnType.isAssignableFrom(Map.class)) {
 			if (deleteIfEmpty && ((Map<String, String>) retval).size() == 0) return (true);
 			if (retval != null) indexMap.putAll((Map<String, String>) retval);
 		} else if (returnType.isAssignableFrom(Set.class)) {
@@ -3199,11 +3199,9 @@ public class MarcRecordDetails {
 			for (DetectionSettings curSettings : marcProcessor.getDetectionSettings()) {
 				Set<String> fieldData = getFieldList(curSettings.getFieldSpec());
 				boolean isMatch = false;
-				// logger.debug("Found " + fieldData.size() + " fields matching " +
-				// curSettings.getFieldSpec());
+				logger.debug("Found " + fieldData.size() + " fields matching " + curSettings.getFieldSpec());
 				for (String curField : fieldData) {
-					// logger.debug("Testing if value " + curField.toLowerCase() +
-					// " matches " + curSettings.getValueToMatch());
+					logger.debug("Testing if value " + curField.toLowerCase() + " matches " + curSettings.getValueToMatch());
 					isMatch = ((String) curField.toLowerCase()).matches(".*" + curSettings.getValueToMatch().toLowerCase() + ".*");
 					if (isMatch) break;
 				}

@@ -62,7 +62,7 @@ public class AlphaBrowseProcessor implements IMarcRecordProcessor, IEContentProc
 	
 	private HashSet<String> existingBrowseRecords = new HashSet<String>();
 
-	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Connection econtentConn, Logger logger) {
+	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Logger logger) {
 		this.logger = logger;
 		this.vufindConn = vufindConn;
 		results = new ProcessorResults("Alpha Browse Table Update", reindexLogId, vufindConn, logger);
@@ -85,9 +85,6 @@ public class AlphaBrowseProcessor implements IMarcRecordProcessor, IEContentProc
 		results.addNote("updateAlphaBrowseForUnchangedRecords = " + updateAlphaBrowseForUnchangedRecords);
 		
 		try {
-			//Setup prepared statements for later usage.  
-			getLibraryIdsForEContent = econtentConn.prepareStatement("SELECT distinct libraryId from econtent_item where recordId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			
 			librarySubdomains = new HashMap<Long, String>();
 			PreparedStatement loadLibraryInfo = vufindConn.prepareStatement("SELECT libraryId, subdomain FROM library");
 			ResultSet libraryInfoRS = loadLibraryInfo.executeQuery();

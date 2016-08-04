@@ -18,7 +18,7 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 	private ProcessorResults results;
 	private ConcurrentUpdateSolrServer updateServer;
 	@Override
-	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Connection econtentConn, Logger logger) {
+	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Logger logger) {
 		this.logger = logger;
 		results = new ProcessorResults("Update Solr", reindexLogId, vufindConn, logger);
 		solrPort = configIni.get("Reindex", "solrPort");

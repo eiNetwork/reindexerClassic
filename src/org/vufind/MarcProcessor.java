@@ -90,10 +90,6 @@ public class MarcProcessor {
 	private PreparedStatement				    insertMarcInfoStmt;
 	private PreparedStatement					updateMarcInfoStmt;
 	
-	//BA++ Prepared Statement to delete records from db not in Marc
-	private PreparedStatement   				getIlsIdsFromEContent;
-	private PreparedStatement					deleteEContentRecordnotinMarc;
-
 private Set<String>							existingEContentIds	= Collections.synchronizedSet(new HashSet<String>());
 	private Map<String, Float>					printRatings				= Collections.synchronizedMap(new HashMap<String, Float>());
 	private Map<Long, Float>					econtentRatings			= Collections.synchronizedMap(new HashMap<Long, Float>());
@@ -102,7 +98,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 	private Map<String, Long>					locationFacets			= Collections.synchronizedMap(new HashMap<String, Long>());
 	private Map<String, Long>					eContentLinkRules		= Collections.synchronizedMap(new HashMap<String, Long>());
 	private ArrayList<String>					advantageLibraryFacets = new ArrayList<String>();
-	private boolean useEContentDetectionSettings = true;
 	private ArrayList<DetectionSettings>		detectionSettings		= new ArrayList<DetectionSettings>();
 	private HashMap<String, LexileData> 		lexileInfo = new HashMap<String, LexileData>();
 	//BA++ added to create Set of MarcIds from file
@@ -122,7 +117,7 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 	public static final int								RECORD_DELETED						= 4;
 	public static final int								RECORD_CHANGED_SECONDARY	= 1;
 	
-	public boolean init(String serverName, Ini configIni, Connection vufindConn, Connection econtentConn, Logger logger) {
+	public boolean init(String serverName, Ini configIni, Connection vufindConn, Logger logger) {
 		this.logger = logger;
 
 		marcRecordPath = configIni.get("Reindex", "marcPath");
@@ -224,51 +219,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 			return false;
 		}
 
-		// Load the ILS ids of any eContent records that have been loaded so we can
-		// suppress the record in the regular content
-		logger.info("Loading ils ids for econtent records for suppression");
-		ReindexProcess.addNoteToCronLog("Loading ils ids for econtent records for suppression");
-		try {
-			PreparedStatement existingEContentRecordStmt = econtentConn.prepareStatement("SELECT ilsId FROM econtent_record", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			ResultSet existingEContentRecordRS = existingEContentRecordStmt.executeQuery();
-			while (existingEContentRecordRS.next()) {
-				existingEContentIds.add(existingEContentRecordRS.getString(1));
-			}
-			existingEContentRecordRS.close();
-		} catch (SQLException e) {
-			logger.error("Unable to load checksums for existing records", e);
-			return false;
-		}
-		
-		String useEContentDetectionSettingsStr = configIni.get("Reindex", "useEContentDetectionSettings");
-		if (useEContentDetectionSettingsStr != null){
-			useEContentDetectionSettings = Boolean.parseBoolean(useEContentDetectionSettingsStr);
-		}
-
-		// Load detection settings to determine if a record is eContent.
-		if (useEContentDetectionSettings){
-			logger.info("Loading record detection settings");
-			ReindexProcess.addNoteToCronLog("Loading record detection settings");
-			try {
-				PreparedStatement eContentDetectionSettingsStmt = econtentConn.prepareStatement("SELECT * FROM econtent_record_detection_settings", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-				ResultSet eContentDetectionSettingsRS = eContentDetectionSettingsStmt.executeQuery();
-				while (eContentDetectionSettingsRS.next()) {
-					DetectionSettings settings = new DetectionSettings();
-					settings.setFieldSpec(eContentDetectionSettingsRS.getString("fieldSpec"));
-					settings.setValueToMatch(eContentDetectionSettingsRS.getString("valueToMatch"));
-					settings.setSource(eContentDetectionSettingsRS.getString("source"));
-					settings.setAccessType(eContentDetectionSettingsRS.getString("accessType"));
-					settings.setItem_type(eContentDetectionSettingsRS.getString("item_type"));
-					settings.setAdd856FieldsAsExternalLinks(eContentDetectionSettingsRS.getBoolean("add856FieldsAsExternalLinks"));
-					detectionSettings.add(settings);
-				}
-				eContentDetectionSettingsRS.close();
-			} catch (SQLException e) {
-				logger.error("Unable to load detection settings for eContent.", e);
-				return false;
-			}
-		}
-
 		// Load ratings for print and eContent titles
 		logger.info("Loading ratings");
 		ReindexProcess.addNoteToCronLog("Loading ratings");
@@ -282,15 +232,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 				printRatings.put(printRatingsRS.getString("record_id"), printRatingsRS.getFloat("rating"));
 			}
 			printRatingsRS.close();
-			PreparedStatement econtentRatingsStmt = econtentConn
-					.prepareStatement(
-							"SELECT econtent_record.id, avg(rating) as rating from econtent_record inner join econtent_rating on econtent_rating.recordId = econtent_record.id WHERE ilsId <> '' GROUP BY ilsId",
-							ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			ResultSet econtentRatingsRS = econtentRatingsStmt.executeQuery();
-			while (econtentRatingsRS.next()) {
-				econtentRatings.put(econtentRatingsRS.getLong(1), econtentRatingsRS.getFloat(2));
-			}
-			econtentRatingsRS.close();
 		} catch (SQLException e) {
 			logger.error("Unable to load ratings for resource", e);
 			return false;
@@ -702,11 +643,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 					processMarcFile(recordProcessors, logger, marcFile);
 				}
 			}
-			//BA++ delete records in db not in Marc file after Marc file processed.
-			if ( ReindexProcess.isDeleteERecordsinDBNotinMarcOrOD() )
-			{
-				deleteMarcRecordInDb();
-			}
 			return true;
 		} catch (Exception e) {
 			logger.error("Unable to process marc files", e);
@@ -964,48 +900,4 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 	public ArrayList<String> getAdvantageLibraryFacets() {
 		return advantageLibraryFacets;
 	}
-	
-	//BA++ delete from db where no Marc record
-	//Method won't run if config file DeleteERecordsinDBNotinMarcOrOD not set to true
-	public int deleteMarcRecordInDb(){
-		Connection econtentConn = null;
-		int ctr = 0;
-		int arraySize = 0;
-		String ilsId = null;
-		
-		try {
-			econtentConn = ReindexProcess.getEcontentConn();
-			
-			getIlsIdsFromEContent = econtentConn.prepareStatement("SELECT ilsid FROM econtent_record where ilsid is not null", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			deleteEContentRecordnotinMarc = econtentConn.prepareStatement("DELETE from econtent_record where ilsid = ?");
-
-		} catch (Exception e) {
-			logger.error("Could not connect to databases", e);
-			System.exit(1);
-		}
-		
-		logger.info("begin deleteMarcRecordInDb marcFile IDs "  + marcIds.size());
-		try {			
-				ResultSet ilsIds = getIlsIdsFromEContent.executeQuery();
-				while (ilsIds.next()) {
-					ilsId = ilsIds.getString(1);
-					if ( ! marcIds.contains(ilsId)){
-						logger.info("Begin Marc db record delete ilsid " + ilsId);						
-						deleteEContentRecordnotinMarc.setString(1, ilsId);
-						deleteEContentRecordnotinMarc.executeUpdate();
-						logger.info("End Marc db record delete ilsid " + ilsId);
-						ctr++;
-					}
-					arraySize++;
-				}
-				ilsIds.close();
-			} catch (SQLException e) {
-				logger.error("Unable to delete record - deleteMarcRecordInDb", e);
-			}				
-		logger.info("marcIds deleted from db - not in Marc file " + ctr );
-		logger.info("ilsIds in Marc file " + arraySize );
-			
-		return ctr;
-	}
-	
 }

@@ -3435,24 +3435,26 @@ public class MarcRecordDetails {
 
 	Pattern overdriveIdPattern = Pattern.compile("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", Pattern.CANON_EQ);
 	public String getExternalId() {
-		if (isEContent()){
+		/*if (isEContent()){
 			//Get the overdrive id
 			DetectionSettings curDetectionSetting = eContentDetectionSettings.get(eContentDetectionSettings.keySet().iterator().next());
-			if (curDetectionSetting.getSource().matches("(?i)^overdrive.*")){
+			if (curDetectionSetting.getSource().matches("(?i)^overdrive.*")){*/
 				try {
 					ArrayList<LibrarySpecificLink> sourceUrls =  getSourceUrls();
 					for(LibrarySpecificLink link : sourceUrls){
-						Matcher RegexMatcher = overdriveIdPattern.matcher(link.getUrl());
-						if (RegexMatcher.find()) {
-							String overDriveId = RegexMatcher.group();
-							return overDriveId.toLowerCase();
+						if( link.getUrl() != null) {
+							Matcher RegexMatcher = overdriveIdPattern.matcher(link.getUrl());
+							if (RegexMatcher.find()) {
+								String overDriveId = RegexMatcher.group();
+								return overDriveId.toLowerCase();
+							}
 						}
 					}
 				} catch (IOException e) {
 					logger.error("Error loading source urls while retrieving external id");
 				}
-			}
-		}
+		/*	}
+		}*/
 		return null;
 	}
 

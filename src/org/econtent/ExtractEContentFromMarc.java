@@ -76,6 +76,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	private HashMap<String, ArrayList<String>> duplicateOverDriveRecordsInMillennium = new HashMap<String, ArrayList<String>>();
 	private HashMap<String, MarcRecordDetails> millenniumRecordsNotInOverDrive = new HashMap<String, MarcRecordDetails>();
 	private HashSet<String> recordsWithoutOverDriveId = new HashSet<String>(); 
+	
+	private HashMap<String, SolrInputDocument> overDriveItemsWithMarc = new HashMap<String, SolrInputDocument>();
 
 	public boolean init(Ini configIni, String serverName, long reindexLogId, Connection vufindConn, Logger logger) {
 		return init(configIni, serverName, reindexLogId, vufindConn, null, logger);
@@ -289,6 +291,13 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		this.marcProcessor = marcProcessor; 
 		try {
 			results.incRecordsProcessed();
+			
+			// see if it has an overdrive URL			
+			if( recordInfo.getExternalId() != null ) {
+				overDriveItemsWithMarc.put(recordInfo.getExternalId(), recordInfo.getSolrDocument());
+				//processedOverDriveRecords.put(recordInfo.getExternalId(), recordInfo.getExternalId());
+			}
+			
 			if (!recordInfo.isEContent()){
 				results.incSkipped();
 				return false;
@@ -617,8 +626,13 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	
 	private SolrInputDocument createSolrDocForOverDriveRecord(OverDriveRecordInfo recordInfo, long econtentRecordId) {
 		logger.info("add Solr info for OD record " + econtentRecordId);
-		SolrInputDocument doc = new SolrInputDocument();
-		doc.addField("id", "econtentRecord" + econtentRecordId);
+		SolrInputDocument doc;		
+		if( overDriveItemsWithMarc.containsKey(recordInfo.getId()) ) {
+			doc = overDriveItemsWithMarc.get(recordInfo.getId());
+		} else {
+			doc = new SolrInputDocument();
+			doc.addField("id", "econtentRecord" + econtentRecordId);
+		}
 		
 		doc.addField("collection", "Allegheny County Catalog");
 		int numHoldings = 0;
@@ -638,6 +652,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		String firstFormat = null;
 		LexileData lexileData = null;
 		Set<String> econtentDevices = new HashSet<String>();
+		doc.remove("format");
 		for (OverDriveItem curItem : recordInfo.getItems().values()){
 			logger.debug("adding " + curItem.getFormat() + " to " + econtentRecordId);
 			doc.addField("format", curItem.getFormat());
@@ -661,14 +676,14 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				}
 			}
 		}
-		doc.addField("author", recordInfo.getAuthor());
+		addPropertyIfNotPresent(doc, "author", recordInfo.getAuthor());
 		for (String curContributor : recordInfo.getContributors()){
 			doc.addField("author2", curContributor);
 		}
 		//BA++  leave ok will return sortTitle
-		doc.addField("title", recordInfo.getTitle());
+		addPropertyIfNotPresent(doc, "title", recordInfo.getTitle());
 		doc.addField("title_full", recordInfo.getTitle());
-		doc.addField("title_sort", recordInfo.getSortTitle());
+		addPropertyIfNotPresent(doc, "title_sort", recordInfo.getSortTitle());
 		for (String curSubject : recordInfo.getSubjects()){
 			//doc.addField("subject_facet", curSubject);
 			doc.addField("topic", curSubject);
@@ -682,35 +697,36 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				publishDate = publishDate.substring(0,4);
 			}
 			doc.addField("publishDate", publishDate);
-			doc.addField("publishDateSort", recordInfo.getPublishDate());
+			addPropertyIfNotPresent(doc, "publishDateSort", recordInfo.getPublishDate());
 			//BA+++  date_added, time_since_added
-			doc.addField("date_added", getDateAdded(recordInfo.getPublishDate()));
+			addPropertyIfNotPresent(doc, "date_added", getDateAdded(recordInfo.getPublishDate()));
 			doc.addField("time_since_added", getTimeSinceAddedForDate(new Date(recordInfo.getPublishDate())));
 		}
-		doc.addField("edition", recordInfo.getEdition());
-		doc.addField("description", recordInfo.getDescription());
+		addPropertyIfNotPresent(doc, "edition", recordInfo.getEdition());
+		addPropertyIfNotPresent(doc, "description", recordInfo.getDescription());
 		doc.addField("series", recordInfo.getSeries());
 		//Deal with always available titles by reducing hold count
 		if (numHoldings > 1000){
 			numHoldings = 5;
 		}
+		doc.remove("num_holdings");
 		doc.addField("num_holdings", Integer.toString(numHoldings));
 		
 		if (lexileData != null){
-			doc.addField("lexile_score", lexileData.getLexileScore());
-			doc.addField("lexile_code", lexileData.getLexileCode());
+			addPropertyIfNotPresent(doc, "lexile_score", lexileData.getLexileScore());
+			addPropertyIfNotPresent(doc, "lexile_code", lexileData.getLexileCode());
 		}
 		for (String curDevice : econtentDevices){
 			doc.addField("econtent_device", curDevice);
 		}
-		doc.addField("externalId", recordInfo.getId());
+		addPropertyIfNotPresent(doc, "externalId", recordInfo.getId());
 		doc.addField("econtent_source", "OverDrive");
 		doc.addField("econtent_protection_type", "external");
-		doc.addField("recordtype", "EContent");
+		addPropertyIfNotPresent(doc, "recordtype", "EContent");
 		doc.addField("format_category", recordInfo.getFormatCategory());
 		
 		if( recordInfo.getCoverImage() != null && recordInfo.getCoverImage() != "") {
-			doc.addField("thumbnail", recordInfo.getCoverImage());
+			addPropertyIfNotPresent(doc, "thumbnail", recordInfo.getCoverImage());
 		}
 		
 		Collection<String> allFieldNames = doc.getFieldNames();
@@ -722,6 +738,12 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("allfields", fieldValues.toString());
 		
 		return doc;
+	}
+	
+	private void addPropertyIfNotPresent(SolrInputDocument doc, String name, Object value) {
+		if( !(doc.containsKey(name)) ) {
+			doc.addField(name, value);
+		}
 	}
 
 	//BA++ delete from db where no OverDrive record
@@ -776,20 +798,11 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		// dump out the count of updated records
 		logger.info("loaded " + (overDriveTitles.size() + processedOverDriveRecords.size()) + " overdrive titles unique in shared collection.");
 	
-		//Make sure that the index is good and swap indexes
+		//Make sure that the index is good
 		results.addNote("calling final commit on index");
 		logger.info("calling final commit on index");
 		
-		
 		try {
-			results.addNote("calling final commit on index");
-			
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<commit />", logger);
-			if (!response.isSuccess()){
-				results.incErrors();
-				results.addNote("Error committing changes " + response.getMessage());
-			}
-
 			results.addNote("optimizing index");
 			logger.info("optimizing index");
 			try {

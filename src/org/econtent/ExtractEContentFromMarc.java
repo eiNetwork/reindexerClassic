@@ -724,6 +724,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("econtent_protection_type", "external");
 		addPropertyIfNotPresent(doc, "recordtype", "EContent");
 		doc.addField("format_category", recordInfo.getFormatCategory());
+		doc.addField("format", "Category: " + recordInfo.getFormatCategory());
 		
 		if( recordInfo.getCoverImage() != null && recordInfo.getCoverImage() != "") {
 			addPropertyIfNotPresent(doc, "thumbnail", recordInfo.getCoverImage());

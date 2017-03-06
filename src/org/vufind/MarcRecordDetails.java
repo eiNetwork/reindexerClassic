@@ -1097,7 +1097,7 @@ public class MarcRecordDetails {
 					returnType = String.class;
 				}else if (functionName.equals("getRelativeTimeAdded") && parms.length == 2){
 					retval = getRelativeTimeAdded(parms[0], parms[1]);
-					returnType = String.class;
+					returnType = Set.class;
 				}else if (functionName.equals("getLibraryRelativeTimeAdded") && parms.length == 6){
 					retval = getLibraryRelativeTimeAdded(parms[0], parms[1], parms[2], parms[3], parms[4], parms[5]);
 					returnType = Set.class;
@@ -2776,55 +2776,60 @@ public class MarcRecordDetails {
 		return null;
 	}
 
-	public String getRelativeTimeAdded(String dateFieldSpec, String dateFormat) {
+	public Set<String> getRelativeTimeAdded(String dateFieldSpec, String dateFormat) {
 		// Get the date the record was added from the 998b tag (should only be one).
+		Set<String> results = new HashSet<String>();
 		String dateAdded = getDateAdded(dateFieldSpec, dateFormat);
-		if (dateAdded == null) return null;
+		if (dateAdded == null) return results;
 
 		String curDateStr = (String) dateAdded;
 		SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
 		try {
 			Date curDate = formatter2.parse(curDateStr);
-			return getTimeSinceAddedForDate(curDate);
+			results.addAll(getTimeSinceAddedForDate(curDate));
 		} catch (ParseException e) {
 			logger.error("Error parsing date " + curDateStr + " in getRelativeTimeAdded - MarcRecordDetails");
 		}
-		return null;
+		return results;
 	}
 
-	public String getTimeSinceAddedForDate(Date curDate) {
+	public Set<String> getTimeSinceAddedForDate(Date curDate) {
+		return getTimeSinceAddedForDate(curDate, false);
+	}
+	public Set<String> getTimeSinceAddedForDate(Date curDate, boolean onlyFirst) {
 		long timeDifferenceDays = (new Date().getTime() - curDate.getTime()) / (1000 * 60 * 60 * 24);
+		Set<String> results = new HashSet<String>();
 		//logger.info("Time Difference Days: " + timeDifferenceDays);
-		if (timeDifferenceDays <= 1) {
-			return "Day";
+		if (timeDifferenceDays <= 1 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Day");
 		}
-		if (timeDifferenceDays <= 7) {
-			return "Week";
+		if (timeDifferenceDays <= 7 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Week");
 		}
-		if (timeDifferenceDays <= 30) {
-			return "Month";
+		if (timeDifferenceDays <= 30 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Month");
 		}
-		if (timeDifferenceDays <= 60) {
-			return "2 Months";
+		if (timeDifferenceDays <= 60 && (!onlyFirst || (results.size() == 0))) {
+			results.add("2 Months");
 		}
-		if (timeDifferenceDays <= 90) {
-			return "Quarter";
+		if (timeDifferenceDays <= 90 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Quarter");
 		}
-		if (timeDifferenceDays <= 180) {
-			return "Six Months";
+		if (timeDifferenceDays <= 180 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Six Months");
 		}
-		if (timeDifferenceDays <= 365) {
-			return "Year";
+		if (timeDifferenceDays <= 365 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Year");
 		}
-		if (timeDifferenceDays > 365) {
-			int years = (int)(timeDifferenceDays/365);
-			return (years + " Years" );
+		if (timeDifferenceDays > 365 && (!onlyFirst || (results.size() == 0))) {
+			int years = (int)Math.ceil(timeDifferenceDays/365.0);
+			results.add(years + " Years" );
 		}
-		return null;
+		return results;
 	}
 
 	public void addTimeSinceAddedForDateToResults(Date curDate, Set<String> result) {
-		result.add(getTimeSinceAddedForDate(curDate));
+		result.addAll(getTimeSinceAddedForDate(curDate));
 	}
 
 	static HashMap<String, Pattern> libraryRelativeTimeAddedBranchPatterns = new HashMap<String, Pattern>();
@@ -3439,6 +3444,7 @@ public class MarcRecordDetails {
 			//Get the overdrive id
 			DetectionSettings curDetectionSetting = eContentDetectionSettings.get(eContentDetectionSettings.keySet().iterator().next());
 			if (curDetectionSetting.getSource().matches("(?i)^overdrive.*")){*/
+		
 				try {
 					ArrayList<LibrarySpecificLink> sourceUrls =  getSourceUrls();
 					for(LibrarySpecificLink link : sourceUrls){
@@ -3452,6 +3458,22 @@ public class MarcRecordDetails {
 					}
 				} catch (IOException e) {
 					logger.error("Error loading source urls while retrieving external id");
+				}
+				
+				// overdrive has been updating their marc records to use crossRefIDs instead of the full ID.  To check for that,
+				// we need to look in 037a, because they're storing the full id there in those marc records.
+				@SuppressWarnings("unchecked")
+				List<DataField> itemFields = record.getVariableFields("037");
+				for (DataField curItem : itemFields) {
+					Subfield iTypeField = curItem.getSubfield('a');
+					if (iTypeField != null){
+						String overDriveId = (String)iTypeField.getData();
+						Matcher RegexMatcher = overdriveIdPattern.matcher(overDriveId);
+						if (RegexMatcher.find()) {
+							overDriveId = RegexMatcher.group();
+							return overDriveId.toLowerCase();
+						}
+					}
 				}
 		/*	}
 		}*/

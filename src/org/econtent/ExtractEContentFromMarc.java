@@ -697,10 +697,13 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				publishDate = publishDate.substring(0,4);
 			}
 			doc.addField("publishDate", publishDate);
-			addPropertyIfNotPresent(doc, "publishDateSort", recordInfo.getPublishDate());
+			addPropertyIfNotPresent(doc, "publishDateSort", publishDate);
+			//addPropertyIfNotPresent(doc, "publishDateSort", recordInfo.getPublishDate());
 			//BA+++  date_added, time_since_added
 			addPropertyIfNotPresent(doc, "date_added", getDateAdded(recordInfo.getPublishDate()));
-			doc.addField("time_since_added", getTimeSinceAddedForDate(new Date(recordInfo.getPublishDate())));
+			for (String timeSince : getTimeSinceAddedForDate(new Date(recordInfo.getPublishDate()))){
+				doc.addField("time_since_added", timeSince);
+			}
 		}
 		addPropertyIfNotPresent(doc, "edition", recordInfo.getEdition());
 		addPropertyIfNotPresent(doc, "description", recordInfo.getDescription());
@@ -807,7 +810,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			results.addNote("optimizing index");
 			logger.info("optimizing index");
 			try {
-				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<optimize />", logger);
+				URLPostResponse optimizeResponse = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?optimize=true&maxSegments=1", "<optimize />", logger);
 				if (!optimizeResponse.isSuccess()){
 					results.addNote("Error optimizing index " + optimizeResponse.getMessage());
 				}
@@ -929,39 +932,43 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		SimpleDateFormat formatter2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 		try {
 			Date publishDate = formatter2.parse(date);
-			return getTimeSinceAddedForDate(publishDate);
+			return getTimeSinceAddedForDate(publishDate, true).iterator().next();
 		} catch (ParseException e) {
 		}
 		return null;
 	}
 	
-	public String getTimeSinceAddedForDate(Date curDate) {
+	public HashSet<String> getTimeSinceAddedForDate(Date curDate) {
+		return getTimeSinceAddedForDate(curDate, false);
+	}
+	public HashSet<String> getTimeSinceAddedForDate(Date curDate, boolean onlyFirst) {
 		long timeDifferenceDays = (new Date().getTime() - curDate.getTime()) / (1000 * 60 * 60 * 24);
-		if (timeDifferenceDays <= 1) {
-			return "Day";
+		HashSet<String> results = new HashSet<String>();
+		if (timeDifferenceDays <= 1 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Day");
 		}
-		if (timeDifferenceDays <= 7) {
-			return "Week";
+		if (timeDifferenceDays <= 7 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Week");
 		}
-		if (timeDifferenceDays <= 30) {
-			return "Month";
+		if (timeDifferenceDays <= 30 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Month");
 		}
-		if (timeDifferenceDays <= 60) {
-			return "2 Months";
+		if (timeDifferenceDays <= 60 && (!onlyFirst || (results.size() == 0))) {
+			results.add("2 Months");
 		}
-		if (timeDifferenceDays <= 90) {
-			return "Quarter";
+		if (timeDifferenceDays <= 90 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Quarter");
 		}
-		if (timeDifferenceDays <= 180) {
-			return "Six Months";
+		if (timeDifferenceDays <= 180 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Six Months");
 		}
-		if (timeDifferenceDays <= 365) {
-			return "Year";
+		if (timeDifferenceDays <= 365 && (!onlyFirst || (results.size() == 0))) {
+			results.add("Year");
 		}
-		if (timeDifferenceDays > 365) {
-			int years = (int)(timeDifferenceDays/365);
-			return (years + " Years" );
+		if (timeDifferenceDays > 365 && (!onlyFirst || (results.size() == 0))) {
+			int years = (int)Math.ceil(timeDifferenceDays/365.0);
+			results.add(years + " Years");
 		}
-		return null;
+		return results;
 	}
 }

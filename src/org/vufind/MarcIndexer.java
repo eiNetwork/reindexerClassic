@@ -67,7 +67,7 @@ public class MarcIndexer implements IMarcRecordProcessor, IRecordProcessor {
 		URLPostResponse response;
 		results.addNote("optimizing index");
 		try {
-			response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/", "<optimize />", logger);	
+			response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?optimize=true&maxSegments=1", "<optimize />", logger);	
 			if (!response.isSuccess()){
 				results.addNote("Error optimizing biblio2 index " + response.getMessage());
 			}

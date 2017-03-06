@@ -130,7 +130,7 @@ public class ReindexProcess {
 							firstResults = results;
 						}
 						errorCount += results.getNumErrors();
-						processedCount += results.getNumErrors();
+						processedCount += results.getRecordsProcessed();
 					}
 				}
 				

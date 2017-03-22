@@ -294,7 +294,15 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			
 			// see if it has an overdrive URL			
 			if( recordInfo.getExternalId() != null ) {
-				overDriveItemsWithMarc.put(recordInfo.getExternalId(), recordInfo.getSolrDocument());
+				if( overDriveItemsWithMarc.containsKey(recordInfo.getExternalId()) ) {
+					SolrInputDocument newMarc = recordInfo.getSolrDocument();
+					SolrInputDocument prevMarc = overDriveItemsWithMarc.get(recordInfo.getExternalId());
+					if( ((String)newMarc.getFieldValue("date_added")).compareTo((String)prevMarc.getFieldValue("date_added")) > 0 ) {
+						overDriveItemsWithMarc.put(recordInfo.getExternalId(), newMarc);
+					}
+				} else {
+					overDriveItemsWithMarc.put(recordInfo.getExternalId(), recordInfo.getSolrDocument());
+				}
 				//processedOverDriveRecords.put(recordInfo.getExternalId(), recordInfo.getExternalId());
 			}
 			
@@ -623,12 +631,39 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			}
 		}
 	}
+	private void addOverDriveTitlesWithOnlyMarcToIndex(){
+		results.addNote("Adding OverDrive titles with only marc records to index");
+		for (String overDriveId : overDriveItemsWithMarc.keySet()){
+			logger.debug("Adding OverDrive record with only MARC for " + overDriveId);
+			try {
+				//Reindex the record
+				SolrInputDocument doc = overDriveItemsWithMarc.get(overDriveId);
+				
+				// add some extra fields we need
+				addPropertyIfNotPresent(doc, "externalId", overDriveId);
+				doc.addField("econtent_source", "OverDrive");
+				doc.addField("econtent_protection_type", "external");
+				addPropertyIfNotPresent(doc, "recordtype", "EContent");
+				doc.addField("collection", "Allegheny County Catalog");
+				doc.addField("institution", "Digital Collection");
+				doc.addField("building", "Digital Collection");
+
+				// add it
+				updateServer.add(doc);
+			} catch (Exception e) {
+				logger.error("Error processing eContent record " + overDriveId , e);
+				results.incErrors();
+				results.addNote("Error processing eContent record " + overDriveId + " " + e.toString());
+			}
+		}
+	}
 	
 	private SolrInputDocument createSolrDocForOverDriveRecord(OverDriveRecordInfo recordInfo, long econtentRecordId) {
 		logger.info("add Solr info for OD record " + econtentRecordId);
 		SolrInputDocument doc;		
 		if( overDriveItemsWithMarc.containsKey(recordInfo.getId()) ) {
 			doc = overDriveItemsWithMarc.get(recordInfo.getId());
+			overDriveItemsWithMarc.remove(recordInfo.getId());
 		} else {
 			doc = new SolrInputDocument();
 			doc.addField("id", "econtentRecord" + econtentRecordId);
@@ -798,6 +833,14 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				addOverDriveTitlesWithoutMarcToIndex();
 			}
 		}
+		
+		/* This includes all of the OverDrive items we have MARC records for but are not in our collection (typically they were once upon a time, but not currently).  
+		 * If this is uncommented, they will appear in the catalog and have links to the acla.overdrive.com site, where patrons can Recommend that the library purchase them.
+		  
+		// see if there are left over marc records we didn't process
+		logger.debug("there are still " + overDriveItemsWithMarc.size() + " items left");
+		addOverDriveTitlesWithOnlyMarcToIndex();
+		*/
 	
 		// dump out the count of updated records
 		logger.info("loaded " + (overDriveTitles.size() + processedOverDriveRecords.size()) + " overdrive titles unique in shared collection.");

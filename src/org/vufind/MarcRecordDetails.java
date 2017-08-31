@@ -11,6 +11,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +45,17 @@ import org.solrmarc.tools.CallNumUtils;
 import org.solrmarc.tools.SolrMarcIndexerException;
 import org.solrmarc.tools.Utils;
 
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLSession;
+import org.apache.commons.codec.binary.Base64;
+
 import com.jamesmurty.utils.XMLBuilder;
 
 import bsh.BshMethod;
@@ -66,6 +78,12 @@ public class MarcRecordDetails {
 
 	private boolean							allFieldsMapped		= false;
 	
+	private String sierraAPIToken;
+	private String sierraAPITokenType;
+	private long sierraAPIExpiration;
+	private String clientKey = "qeiKx8pfiMYTB833qT3Unxdu2yst";
+	private String clientSecret = "s1err44P1";
+
 	/**
 	 * Does basic mapping of fields to determine if the record has changed or not
 	 * 
@@ -369,7 +387,7 @@ public class MarcRecordDetails {
 	 * @param mapName
 	 *          - the name of a translation map for the field value, or null
 	 * @param fieldVal
-	 *          - the (untranslated) field value to add to the solr doc field
+	 *          - the (untranslated) field value to add to the solr doc field 
 	 */
 	protected void addField(Map<String, Object> indexMap, String ixFldName, String fieldVal) {
 		addField(indexMap, ixFldName, null, fieldVal);
@@ -1053,6 +1071,9 @@ public class MarcRecordDetails {
 				}else if (functionName.equals("getSortableTitle")){
 					retval = getSortableTitle();
 					returnType = String.class;
+				}else if (functionName.equals("getExactTitle")){
+					retval = getExactTitle();
+					returnType = String.class;
 				}else if (functionName.equals("getFullCallNumber") && parms.length == 1){
 					retval = getFullCallNumber(parms[0]);
 					returnType = String.class;
@@ -1109,6 +1130,12 @@ public class MarcRecordDetails {
 					returnType = Set.class;
 				}else if (functionName.equals("getAvailableLocationsEIN")){
 					retval = getAvailableLocationsEIN();
+					returnType = Set.class;
+				}else if (functionName.equals("getItemsCustom")){
+					retval = getItemsCustom(parmStr);
+					returnType = Set.class;
+				}else if (functionName.equals("getURLCustom")){
+					retval = getURLCustom();
 					returnType = Set.class;
 				}else if (functionName.equals("getAwardName") && parms.length == 1){
 					retval = getAwardName(parms[0]);
@@ -1373,6 +1400,64 @@ public class MarcRecordDetails {
 
 		return title;
 	}
+	
+	public String getExactTitle() {
+		String exactTitle = this.getTitle().toLowerCase().trim();
+		String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";
+		String exactTitleClean = "";
+		for(int i=0; i<exactTitle.length(); i++) {
+			if( allowedChars.contains(exactTitle.substring(i, i + 1)) ) {
+				exactTitleClean = exactTitleClean.concat(exactTitle.substring(i, i + 1));
+			}
+		}
+		while( exactTitleClean.contains("  ") ) {
+			exactTitleClean = exactTitleClean.replaceAll("  ", " ");
+		}
+		exactTitleClean = "EXACTSTART" + exactTitleClean.replaceAll(" ", "SPACE") + "EXACTEND";
+		return exactTitleClean;
+	}
+	
+	/*
+	public String getExactAuthor() {
+		String exactAuthor = this.getAuthor().toLowerCase().trim();
+		String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";
+		String exactAuthorClean = "";
+		for(int i=0; i<exactAuthor.length(); i++) {
+			if( allowedChars.contains(exactAuthor.substring(i, i + 1)) ) {
+				exactAuthorClean = exactAuthorClean.concat(exactAuthor.substring(i, i + 1));
+			}
+		}
+		while( exactAuthorClean.contains("  ") ) {
+			exactAuthorClean = exactAuthorClean.replaceAll("  ", " ");
+		}
+		exactAuthorClean = "EXACTSTART" + exactAuthorClean.replaceAll(" ", "SPACE") + "EXACTEND";
+		return exactAuthorClean;
+	}
+	
+	public Set<String> getExactContributors() {
+		HashSet<String> contributors = new HashSet<String>();
+		HashMap<String,String> browseAuthors = this.getBrowseAuthors();
+		Iterator<String> keyIterator = browseAuthors.keySet().iterator();
+		while (keyIterator.hasNext()){
+			String fieldName = keyIterator.next();
+			String exactAuthor = browseAuthors.get(fieldName);
+		
+			String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";
+			String exactAuthorClean = "";
+			for(int i=0; i<exactAuthor.length(); i++) {
+				if( allowedChars.contains(exactAuthor.substring(i, i + 1)) ) {
+					exactAuthorClean = exactAuthorClean.concat(exactAuthor.substring(i, i + 1));
+				}
+			}
+			while( exactAuthorClean.contains("  ") ) {
+				exactAuthorClean = exactAuthorClean.replaceAll("  ", " ");
+			}
+			exactAuthorClean = "EXACTSTART" + exactAuthorClean.replaceAll(" ", "SPACE") + "EXACTEND";
+			contributors.add(exactAuthorClean);
+		}
+		return contributors;
+	}
+	*/
 	
 	public Set<String> getAllTitles(){
 		HashSet<String> titles = new HashSet<String>();
@@ -2599,6 +2684,200 @@ public class MarcRecordDetails {
 		return result;
 	}
 
+	private String[] errorBibs = new String[] {".b12510142", ".b13146403", ".b13676842", ".b14608327", ".b15516866", ".b15940147", ".b1594024x", ".b15955643", ".b1634120x", ".b16355982", 
+			                                   ".b16358594", ".b1636353x", ".b16369087", ".b16372761", ".b16384994", ".b16387636", ".b1638975x", ".b16390593", ".b16393430", ".b16398373",
+			                                   ".b16398993", ".b16400392", ".b16450577", ".b16451910", ".b16455393", ".b1646008x", ".b17483451", ".b16460182", ".b16500088", ".b18724322", 
+			                                   ".b18724656", ".b19350971", ".b2099364x", ".b22994725", ".b23137526", ".b23427371", ".b25050813", ".b25270667", ".b26552322", ".b26691334"};
+	public Set<String> getItemsCustom(String indexParm) {
+		Set<String> items = new HashSet<String>();
+		if( Arrays.asList(errorBibs).contains(this.getId()) ) {
+			try {
+				int processed = 0, pageSize = 50, offset = 0;
+				do {
+					JSONObject sierraItems = callSierraAPI("https://iiisy1.einetwork.net/iii/sierra-api/v4/items?fields=id&suppressed=false&bibIds=" + this.getId().substring(2, this.getId().length() - 1) + "&limit=" + pageSize + "&offset=" + offset);
+					processed = sierraItems.getJSONArray("entries").length();
+					for(int i=0; i<processed; i++) {
+						items.add("i" + sierraItems.getJSONArray("entries").getJSONObject(i).getString("id"));
+					}
+					offset += processed;
+				} while (processed == pageSize);
+			} catch( Exception e ) {
+				logger.debug("Error getting items for " + this.getId());
+			}
+		} else {
+			Set<String> dirtyItems = getFieldList(record, indexParm);
+			
+			for(String s:dirtyItems) {
+		        items.add(s.substring(s.lastIndexOf(" ") + 2, s.length() - 1));
+		    }
+		}
+		return items;
+	}
+	
+	public Set<String> getURLCustom() {
+		Set<String> links = new HashSet<String>();
+		@SuppressWarnings("unchecked")
+		List<VariableField> eightFiftySixFields = record.getVariableFields("856");
+		for (VariableField eightFiftySixField : eightFiftySixFields) {
+			DataField eightFiftySixDataField = (DataField) eightFiftySixField;
+			
+			String url = null;
+			if (eightFiftySixDataField.getSubfield('u') != null) {
+				url = eightFiftySixDataField.getSubfield('u').getData();
+			}
+			String text = null;
+			if (eightFiftySixDataField.getSubfield('y') != null) {
+				text = eightFiftySixDataField.getSubfield('y').getData();
+			} else if (eightFiftySixDataField.getSubfield('z') != null) {
+				text = eightFiftySixDataField.getSubfield('z').getData();
+			} else if (eightFiftySixDataField.getSubfield('3') != null) {
+				text = eightFiftySixDataField.getSubfield('3').getData();
+			}
+			links.add("{\"url\":\"" + url + "\",\"desc\":\"" + text + "\"}");
+		}
+		return links;
+	}
+	
+	/**
+	 * Call overdrive api to get library details, name and url
+	 * @param overdriveUrl
+	 * @return JSONObject
+	 */
+	private JSONObject callSierraAPI(String sierraUrl) {
+		if (connectToSierraAPI(false)){
+			//Connect to the API to get our token
+			HttpURLConnection conn;
+			try {
+				URL emptyIndexURL = new URL(sierraUrl);
+				conn = (HttpURLConnection) emptyIndexURL.openConnection();
+				if (conn instanceof HttpsURLConnection){
+					HttpsURLConnection sslConn = (HttpsURLConnection)conn;
+					sslConn.setHostnameVerifier(new HostnameVerifier() {
+						
+						@Override
+						public boolean verify(String hostname, SSLSession session) {
+							//Do not verify host names
+							return true;
+						}
+					});
+				}
+				conn.setRequestMethod("GET");
+				conn.setRequestProperty("User-Agent", "Reindexer");
+				conn.setRequestProperty("Authorization", sierraAPITokenType + " " + sierraAPIToken);
+				//conn.setRequestProperty("Host", "api.overdrive.com");
+				
+				StringBuilder response = new StringBuilder();
+				if (conn.getResponseCode() == 200) {
+					//logger.info("got response");
+					// Get the response
+					BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+					String line;
+					while ((line = rd.readLine()) != null) {
+						response.append(line);
+					}
+					//logger.debug("  Finished reading response");
+					rd.close();
+					return new JSONObject(response.toString());
+				} else {
+					logger.error("Received error " + conn.getResponseCode() + " connecting to sierra API");// try " + connectTry );
+					// Get any errors
+					BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+					String line;
+					while ((line = rd.readLine()) != null) {
+						response.append(line);
+					}
+					logger.debug("  Finished reading response");
+					logger.debug(response.toString());
+
+					rd.close();
+				}
+
+			} catch (Exception e) {
+				logger.debug("Error loading data from sierra API");// try " + connectTry, e );
+			}
+		}
+		
+		return null;
+	}
+		
+	/**
+	 * Authenticate overdrive call
+	 * @param getNewToken
+	 * @return
+	 */
+	private boolean connectToSierraAPI(boolean getNewToken){
+		//Check to see if we already have a valid token
+		if (sierraAPIToken != null && !getNewToken){
+			if (sierraAPIExpiration - new Date().getTime() > 0){
+				//logger.debug("token is still valid");
+				return true;
+			}else{
+				logger.debug("Token has exipred");
+			}
+		}
+		//Connect to the API to get our token
+		HttpURLConnection conn;
+		try {
+			URL emptyIndexURL = new URL("https://iiisy1.einetwork.net/iii/sierra-api/v4/token");
+			conn = (HttpURLConnection) emptyIndexURL.openConnection();
+			if (conn instanceof HttpsURLConnection){
+				HttpsURLConnection sslConn = (HttpsURLConnection)conn;
+				sslConn.setHostnameVerifier(new HostnameVerifier() {
+					
+					@Override
+					public boolean verify(String hostname, SSLSession session) {
+						//Do not verify host names
+						return true;
+					}
+				});
+			}
+			conn.setRequestMethod("POST");
+			conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+			//logger.debug("Client Key is " + clientSecret);
+			String encoded = Base64.encodeBase64String((clientKey + ":" + clientSecret).getBytes());
+			conn.setRequestProperty("Authorization", "Basic "+encoded);
+			conn.setDoOutput(true);
+			OutputStreamWriter wr = new OutputStreamWriter(conn.getOutputStream(), "UTF8");
+			wr.write("grant_type=client_credentials");
+			wr.flush();
+			wr.close();
+			
+			StringBuilder response = new StringBuilder();
+			if (conn.getResponseCode() == 200) {
+				// Get the response { access_token, token_type, expires_in, scope }
+				BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+				String line;
+				while ((line = rd.readLine()) != null) {
+					response.append(line);
+				}
+				rd.close();
+				JSONObject parser = new JSONObject(response.toString());
+				sierraAPIToken = parser.getString("access_token");
+				sierraAPITokenType = parser.getString("token_type");
+				//logger.debug("Token expires in " + parser.getLong("expires_in") + " seconds");
+				sierraAPIExpiration = new Date().getTime() + (parser.getLong("expires_in") * 1000) - 10000;
+				//logger.debug("OverDrive token is " + overDriveAPIToken);
+			} else {
+				logger.error("Received error " + conn.getResponseCode() + " connecting to sierra authentication service" );
+				// Get any errors
+				BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+				String line;
+				while ((line = rd.readLine()) != null) {
+					response.append(line);
+				}
+				logger.debug("  Finished reading response\r\n" + response);
+
+				rd.close();
+				return false;
+			}
+
+		} catch (Exception e) {
+			logger.error("Error connecting to sierra API", e );
+			return false;
+		}
+		return true;
+	}
+
 	/**
 	 * Determine the number of items for the record
 	 * 
@@ -3143,8 +3422,8 @@ public class MarcRecordDetails {
 							//logger.debug("adding available at location " + locationFacet  );
 						}
 					}
-				//}else{
-					//logger.warn("No status field for " + this.getId() + " indicator " + statusSubFieldChar  );
+				}else{
+					logger.warn("No status field for " + this.getId() + " indicator " + statusSubFieldChar  );
 				}
 			}
 		}
@@ -3566,7 +3845,7 @@ public class MarcRecordDetails {
 		if (formats.size() > 0){
 			String firstFormat = formats.iterator().next();
 			addField(mappedFields, "format_category", "format_category_map", firstFormat);
-			//BJP//addField(mappedFields, "format_boost", "format_boost_map", firstFormat);
+			addField(mappedFields, "format_boost", "format_boost_map", firstFormat);
 		}
 		//Load device compatibility
 		addFields(mappedFields, "econtent_device", "device_compatibility_map", formats);

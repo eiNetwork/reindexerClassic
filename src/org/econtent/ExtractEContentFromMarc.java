@@ -750,6 +750,52 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.remove("num_holdings");
 		doc.addField("num_holdings", Integer.toString(numHoldings));
 		
+		// exact fields
+		String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";
+		// title
+		String exactTitle = recordInfo.getTitle().toLowerCase().trim();
+		String exactTitleClean = "";
+		for(int i=0; i<exactTitle.length(); i++) {
+			if( allowedChars.contains(exactTitle.substring(i, i + 1)) ) {
+				exactTitleClean = exactTitleClean.concat(exactTitle.substring(i, i + 1));
+			}
+		}
+		while( exactTitleClean.contains("  ") ) {
+			exactTitleClean = exactTitleClean.replaceAll("  ", " ");
+		}
+		exactTitleClean = "EXACTSTART" + exactTitleClean.replaceAll(" ", "SPACE") + "EXACTEND";
+		doc.addField("title_exact", exactTitleClean);
+		/*
+		// author
+		String exactAuthor = recordInfo.getAuthor().toLowerCase().trim();
+		String exactAuthorClean = "";
+		for(int i=0; i<exactAuthor.length(); i++) {
+			if( allowedChars.contains(exactAuthor.substring(i, i + 1)) ) {
+				exactAuthorClean = exactAuthorClean.concat(exactAuthor.substring(i, i + 1));
+			}
+		}
+		while( exactAuthorClean.contains("  ") ) {
+			exactAuthorClean = exactAuthorClean.replaceAll("  ", " ");
+		}
+		exactAuthorClean = "EXACTSTART" + exactAuthorClean.replaceAll(" ", "SPACE") + "EXACTEND";
+		doc.addField("author_exact", exactAuthorClean);
+		// contributors
+		for (String curContributor : recordInfo.getContributors()){
+			exactAuthor = curContributor.toLowerCase().trim();
+			exactAuthorClean = "";
+			for(int i=0; i<exactAuthor.length(); i++) {
+				if( allowedChars.contains(exactAuthor.substring(i, i + 1)) ) {
+					exactAuthorClean = exactAuthorClean.concat(exactAuthor.substring(i, i + 1));
+				}
+			}
+			while( exactAuthorClean.contains("  ") ) {
+				exactAuthorClean = exactAuthorClean.replaceAll("  ", " ");
+			}
+			exactAuthorClean = "EXACTSTART" + exactAuthorClean.replaceAll(" ", "SPACE") + "EXACTEND";
+			doc.addField("contributor_exact", exactAuthorClean);
+		}
+		*/
+
 		if (lexileData != null){
 			addPropertyIfNotPresent(doc, "lexile_score", lexileData.getLexileScore());
 			addPropertyIfNotPresent(doc, "lexile_code", lexileData.getLexileCode());

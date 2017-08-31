@@ -165,6 +165,13 @@ public class ReindexProcess {
 		// Send completion information
 		endTime = new Date().getTime();
 		sendCompletionMessage(recordProcessors);
+		
+		logger.info("Restarting Solr for " + serverName);
+		try {
+			SystemUtil.executeCommand("/usr/local/vufind2/restartSolr.sh", logger);
+		} catch (IOException e) {
+			logger.error("Error restarting Solr", e);
+		}
 
 		addNoteToCronLog("Finished Reindex for " + serverName);
 		logger.info("Finished Reindex for " + serverName);

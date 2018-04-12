@@ -173,6 +173,13 @@ public class ReindexProcess {
 			logger.error("Error restarting Solr", e);
 		}
 
+		logger.info("Resetting circ_trans time for " + serverName);
+		try {
+			SystemUtil.executeCommand("/usr/bin/php /usr/local/vufind2/rollBackCircTransTime.php", logger);
+		} catch (IOException e) {
+			logger.error("Error resetting circ_trans time", e);
+		}
+
 		addNoteToCronLog("Finished Reindex for " + serverName);
 		logger.info("Finished Reindex for " + serverName);
 	}

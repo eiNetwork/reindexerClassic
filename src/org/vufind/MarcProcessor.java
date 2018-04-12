@@ -7,6 +7,9 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -18,6 +21,7 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -102,6 +106,8 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 	private HashMap<String, LexileData> 		lexileInfo = new HashMap<String, LexileData>();
 	//BA++ added to create Set of MarcIds from file
 	private ArrayList<String>						 	marcIds	= new ArrayList<String>();
+	
+	private Map<String, String>					checkinRecords = Collections.synchronizedMap(new HashMap<String, String>());
 	
 	
 	private String												itemTag;
@@ -289,6 +295,17 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 			logger.error("Unable to setup statements for updating marc_import table", e);
 			return false;
 		}
+		
+		// grab the saved checkin records
+		try {
+			List<String> list = Files.readAllLines(Paths.get("/usr/local/vufind2/import/postgresResults.txt"), StandardCharsets.UTF_8);
+			for(int i=0; i<list.size(); ++i) {
+				String[] chunks = list.get(i).split(":",2);
+				checkinRecords.put(chunks[0], chunks[1]);
+			}
+		} catch (IOException e) {
+			logger.error("Error getting checkin records", e);
+		}		
 
 		ReindexProcess.addNoteToCronLog("Finished setting up MarcProcessor");
 		return true;
@@ -336,6 +353,10 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 
 	public Map<Long, Float> getEcontentRatings() {
 		return econtentRatings;
+	}
+
+	public Map<String, String> getCheckinRecords() {
+		return checkinRecords;
 	}
 
 	public ArrayList<DetectionSettings> getDetectionSettings() {

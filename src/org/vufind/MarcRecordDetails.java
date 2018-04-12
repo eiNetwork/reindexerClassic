@@ -11,7 +11,6 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +44,8 @@ import org.solrmarc.tools.CallNumUtils;
 import org.solrmarc.tools.SolrMarcIndexerException;
 import org.solrmarc.tools.Utils;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -2137,13 +2138,13 @@ public class MarcRecordDetails {
 			String curLocationCode = iter.next();
 			try {
 				if (locationExtractionPattern == null){
-					locationExtractionPattern = Pattern.compile("^(?:\\(\\d+\\))?(.*)\\s*$");
+					locationExtractionPattern = Pattern.compile("^(?:\\(\\d+\\))?(.*) -\\s*$");
 				}
 				Matcher RegexMatcher = locationExtractionPattern.matcher(curLocationCode);
 				if (RegexMatcher.find()) {
 					curLocationCode = RegexMatcher.group(1);
+					addLocationCode(curLocationCode, locationCodes);
 				}
-				addLocationCode(curLocationCode, locationCodes);
 			} catch (PatternSyntaxException ex) {
 				// Syntax error in the regular expression
 			}
@@ -2163,8 +2164,8 @@ public class MarcRecordDetails {
 						Matcher RegexMatcher = locationExtractionPattern.matcher(curLocationCode);
 						if (RegexMatcher.find()) {
 							curLocationCode = RegexMatcher.group(1);
+							addLocationCode(curLocationCode, locationCodes);
 						}
-						addLocationCode(curLocationCode, locationCodes);
 
 					} catch (PatternSyntaxException ex) {
 						// Syntax error in the regular expression
@@ -2694,7 +2695,7 @@ public class MarcRecordDetails {
 			try {
 				int processed = 0, pageSize = 50, offset = 0;
 				do {
-					JSONObject sierraItems = callSierraAPI("https://iiisy1.einetwork.net/iii/sierra-api/v4/items?fields=id&suppressed=false&bibIds=" + this.getId().substring(2, this.getId().length() - 1) + "&limit=" + pageSize + "&offset=" + offset);
+					JSONObject sierraItems = callSierraAPI("https://iiisy1.einetwork.net/iii/sierra-api/v5/items?fields=id&suppressed=false&bibIds=" + this.getId().substring(2, this.getId().length() - 1) + "&limit=" + pageSize + "&offset=" + offset);
 					processed = sierraItems.getJSONArray("entries").length();
 					for(int i=0; i<processed; i++) {
 						items.add("i" + sierraItems.getJSONArray("entries").getJSONObject(i).getString("id"));
@@ -2708,7 +2709,11 @@ public class MarcRecordDetails {
 			Set<String> dirtyItems = getFieldList(record, indexParm);
 			
 			for(String s:dirtyItems) {
-		        items.add(s.substring(s.lastIndexOf(" ") + 2, s.length() - 1));
+				int idStart = s.lastIndexOf(" ") + 2;
+				int idEnd = s.length() - 1;
+				if( idStart < idEnd && s.substring(idStart, idStart + 1).equals("i")) {
+					items.add(s.substring(idStart, idEnd));
+				}
 		    }
 		}
 		return items;
@@ -2725,7 +2730,7 @@ public class MarcRecordDetails {
 			if (eightFiftySixDataField.getSubfield('u') != null) {
 				url = eightFiftySixDataField.getSubfield('u').getData();
 			}
-			String text = null;
+			String text = url;
 			if (eightFiftySixDataField.getSubfield('y') != null) {
 				text = eightFiftySixDataField.getSubfield('y').getData();
 			} else if (eightFiftySixDataField.getSubfield('z') != null) {
@@ -2733,7 +2738,9 @@ public class MarcRecordDetails {
 			} else if (eightFiftySixDataField.getSubfield('3') != null) {
 				text = eightFiftySixDataField.getSubfield('3').getData();
 			}
-			links.add("{\"url\":\"" + url + "\",\"desc\":\"" + text + "\"}");
+			char indicator2 = eightFiftySixDataField.getIndicator2();
+			links.add("{\"url\":\"" + url + "\",\"desc\":\"" + text + "\",\"type\":\"" + 
+					   ((((indicator2 == '0') || (indicator2 == '1')) && (eightFiftySixDataField.getSubfield('3') == null)) ? "accessOnline" : "supplemental") + "\"}");
 		}
 		return links;
 	}
@@ -2818,7 +2825,7 @@ public class MarcRecordDetails {
 		//Connect to the API to get our token
 		HttpURLConnection conn;
 		try {
-			URL emptyIndexURL = new URL("https://iiisy1.einetwork.net/iii/sierra-api/v4/token");
+			URL emptyIndexURL = new URL("https://iiisy1.einetwork.net/iii/sierra-api/v5/token");
 			conn = (HttpURLConnection) emptyIndexURL.openConnection();
 			if (conn instanceof HttpsURLConnection){
 				HttpsURLConnection sslConn = (HttpsURLConnection)conn;
@@ -3435,6 +3442,194 @@ public class MarcRecordDetails {
 		}
 		return result;
 	}
+	/**
+	 * Cache a bunch of availability info
+	 * 
+	 * @return String of encoded JSON containing info used to generate availability 
+	 */
+	public String getCachedJson() {
+		//logger.debug("Get available locations EIN for id" + this.getId());
+		String itemField = "945"; 
+		if (isEContent()){
+			return "";
+		}
+
+		// generate item status list
+		String returnStr = "{\"doUpdate\":false,\"holding\":[";
+		char itemIdSubFieldChar = 'y';
+		char statusSubFieldChar = 's';
+		char dueDateSubFieldChar = '4';
+		char callNumberSubFieldChar = 'a';
+		char opacMsgSubFieldChar = 'r';
+		char volumeSubFieldChar = 'c';
+		char barcodeSubFieldChar = 'i';
+		char locationSubFieldChar = 'l';
+		char suppressionSubFieldChar = 'o';
+		String[] availableStatuses = {"-","o","p","v","y"};
+
+		if( Arrays.asList(errorBibs).contains(this.getId()) ) {
+			try {
+				int processed = 0, pageSize = 50, offset = 0;
+				do {
+					JSONObject sierraItems = callSierraAPI("https://iiisy1.einetwork.net/iii/sierra-api/v5/items?fields=id,status,callNumber,barcode,fixedFields,varFields,location&suppressed=false&bibIds=" + this.getId().substring(2, this.getId().length() - 1) + "&limit=" + pageSize + "&offset=" + offset);
+					processed = sierraItems.getJSONArray("entries").length();
+					for(int i=0; i<processed; i++) {
+						if(i == 0 && offset == 0) {
+							returnStr += "{";
+						} else {
+							returnStr += "},{";
+						}
+						// get the info
+						JSONObject thisObj = sierraItems.getJSONArray("entries").getJSONObject(i);
+						String itemId = thisObj.has("id") ? thisObj.getString("id") : null;
+						JSONObject thisStatus = thisObj.has("status") ? thisObj.getJSONObject("status") : null;
+						String status = ((thisStatus != null) && thisStatus.has("code")) ? thisStatus.getString("code") : null;
+						String dueDate = ((thisStatus != null) && thisStatus.has("duedate")) ? thisStatus.getString("duedate") : null;
+						String callNumber = thisObj.has("callNumber") ? thisObj.getString("callNumber") : null;
+						JSONObject thisFixedFields = thisObj.has("fixedFields") ? thisObj.getJSONObject("fixedFields") : null;
+						JSONObject this108 = ((thisFixedFields != null) && thisFixedFields.has("108")) ? thisFixedFields.getJSONObject("108") : null;
+						String opacMsg = ((this108 != null) && this108.has("value")) ? this108.getString("value") : null;
+						String volumeNumber = "";
+						JSONArray varFields = thisObj.has("varFields") ? thisObj.getJSONArray("varFields") : null;
+						for( int j=0; j<varFields.length(); j++ ) {
+							JSONObject thisVarField = varFields.getJSONObject(j);
+							String fieldTag = thisVarField.has("fieldTag") ? thisVarField.getString("fieldTag") : null; 
+							if( (fieldTag.compareTo("v") == 0) && thisVarField.has("content") ) {
+								volumeNumber = thisVarField.getString("content");
+							}
+						}
+						String barcode = thisObj.has("barcode") ? thisObj.getString("barcode") : null;
+						JSONObject thisLocation = thisObj.has("location") ? thisObj.getJSONObject("location") : null;
+						String location = ((thisLocation != null) && thisLocation.has("code")) ? thisLocation.getString("code"): null
+								;
+						// fill in the info
+						returnStr += "\"id\":\"" + this.getId() + "\",";
+						returnStr += "\"itemId\":" + itemId + ",";
+						returnStr += "\"availability\":" + ((Arrays.asList(availableStatuses).contains(status) && (dueDate == null)) ? "true" : "false") + ",";
+						returnStr += "\"status\":\"" + status + "\",";
+						returnStr += "\"location\":null,\"reserve\":\"N\",";
+						returnStr += "\"callnumber\":\"" + callNumber + ((opacMsg == "n") ? "<br>NO REQUESTS" : "") + "\",";
+						returnStr += "\"duedate\":" + (((dueDate == null) || (dueDate.compareTo("-  -") == 0)) ? "null" : ("\"" + dueDate + "\"")) + ",";
+						returnStr += "\"returnDate\":false,";
+						returnStr += "\"number\":" + ((volumeNumber.compareTo("") == 0) ? "null" : ("\"" + volumeNumber + "\"")) + ",";
+						returnStr += "\"barcode\":\"" + barcode + "\",";
+						returnStr += "\"locationCode\":\"" + location + "\",";
+						returnStr += "\"copiesOwned\":1";
+					}
+					offset += processed;
+				} while (processed == pageSize);
+				if(offset > 0) {
+					returnStr += "}";
+				}
+			} catch( JSONException e ) {
+				logger.debug("Error getting items for " + this.getId() + " => " + e);
+			}
+		} else {
+			@SuppressWarnings("unchecked")
+			List<VariableField> itemRecords = record.getVariableFields(itemField);
+			
+			int processed = 0;
+			for (int i = 0; i < itemRecords.size(); i++) {
+				Object field = itemRecords.get(i);
+				if (field instanceof DataField) {
+					DataField dataField = (DataField) field;
+					
+					// Check suppression
+					Subfield suppressionSubfield = dataField.getSubfield(suppressionSubFieldChar);
+					String suppression = suppressionSubfield == null ? "" : suppressionSubfield.getData().trim();
+					// suppression char needs to exist and needs to be '-'
+					if (suppressionSubfield == null || (suppression.compareTo("-") != 0)) {
+						continue;
+					}
+					
+					// we made it here, so we've got an item to process
+					if(processed == 0) {
+						returnStr += "{";
+					} else {
+						returnStr += "},{";
+					}
+					processed++;
+
+					// Get itemID
+					Subfield itemIdSubfield = dataField.getSubfield(itemIdSubFieldChar);
+					String itemId = itemIdSubfield == null ? "" : itemIdSubfield.getData().trim();
+					if (itemIdSubfield == null) {
+						logger.warn("No itemId field for " + this.getId() + " indicator " + itemIdSubFieldChar  );
+					}
+					// Get status
+					Subfield statusSubfield = dataField.getSubfield(statusSubFieldChar);
+					String status = statusSubfield == null ? "" : statusSubfield.getData().trim();
+					if (statusSubfield == null) {
+						logger.warn("No status field for " + this.getId() + " indicator " + statusSubFieldChar  );
+					}
+					// Get due date
+					Subfield dueDateSubField = dataField.getSubfield(dueDateSubFieldChar);
+					String dueDate = dueDateSubField == null ? "" : dueDateSubField.getData().trim();
+					if (dueDateSubField == null) {
+						logger.warn("No due date field for " + this.getId() + " indicator " + dueDateSubFieldChar  );
+					}
+					// Get call number
+					Subfield callNumberSubField = dataField.getSubfield(callNumberSubFieldChar);
+					String callNumber = callNumberSubField == null ? "" : callNumberSubField.getData().trim();
+					/*if (callNumberSubField == null) {
+						logger.warn("No call number field for " + this.getId() + " indicator " + callNumberSubFieldChar  );
+					}*/
+					// Get opac msg
+					Subfield opacMsgSubField = dataField.getSubfield(opacMsgSubFieldChar);
+					String opacMsg = opacMsgSubField == null ? "" : opacMsgSubField.getData().trim();
+					if (opacMsgSubField == null) {
+						logger.warn("No opacMsg field for " + this.getId() + " indicator " + opacMsgSubFieldChar  );
+					}
+					// Get volume number
+					Subfield volumeSubField = dataField.getSubfield(volumeSubFieldChar);
+					String volumeNumber = volumeSubField == null ? "" : volumeSubField.getData().trim();
+					/*if (volumeSubField == null) {
+						logger.warn("No volume number field for " + this.getId() + " indicator " + volumeSubFieldChar  );
+					}*/
+					// Get barcode
+					Subfield barcodeSubField = dataField.getSubfield(barcodeSubFieldChar);
+					String barcode = barcodeSubField == null ? "" : barcodeSubField.getData().trim();
+					if (barcodeSubField == null) {
+						logger.warn("No due date field for " + this.getId() + " indicator " + barcodeSubFieldChar  );
+					}
+					// Get location
+					Subfield locationSubField = dataField.getSubfield(locationSubFieldChar);
+					String location = locationSubField == null ? "" : locationSubField.getData().trim();
+					if (locationSubField == null) {
+						logger.warn("No due date field for " + this.getId() + " indicator " + locationSubFieldChar  );
+					}
+					
+					// fill in the info
+					returnStr += "\"id\":\"" + this.getId() + "\",";
+					returnStr += "\"itemId\":" + ((itemId.length() >= 10) ? ("\"" + itemId.substring(2, itemId.length() - 1) + "\"") : "null") + ",";
+					returnStr += "\"availability\":" + ((Arrays.asList(availableStatuses).contains(status) && (dueDate.compareTo("-  -") == 0)) ? "true" : "false") + ",";
+					returnStr += "\"status\":\"" + status + "\",";
+					returnStr += "\"location\":null,\"reserve\":\"N\",";
+					returnStr += "\"callnumber\":\"" + callNumber + ((opacMsg.compareTo("n") == 0) ? "<br>NO REQUESTS" : "") + "\",";
+					returnStr += "\"duedate\":" + ((dueDate.compareTo("-  -") == 0) ? "null" : ("\"" + dueDate + "\"")) + ",";
+					returnStr += "\"returnDate\":false,";
+					returnStr += "\"number\":" + ((volumeNumber.compareTo("") == 0) ? "null" : ("\"" + volumeNumber + "\"")) + ",";
+					returnStr += "\"barcode\":\"" + barcode + "\",";
+					returnStr += "\"locationCode\":\"" + location + "\",";
+					returnStr += "\"copiesOwned\":1";
+				}
+			}
+			if(processed > 0) {
+				returnStr += "}";
+			}
+		}
+		returnStr += "],\"orderRecords\":[],";
+		
+		if( marcProcessor.getCheckinRecords().containsKey( this.getId().substring(2, this.getId().length() - 1) ) ) {
+			returnStr += marcProcessor.getCheckinRecords().get( this.getId().substring(2, this.getId().length() - 1) );
+		} else {
+			returnStr += "\"numberOfHolds\":0,\"checkinRecords\":[]";
+		}
+
+		returnStr += "}";
+
+		return returnStr;
+	}
 	
 
 	@SuppressWarnings({ "unchecked" })
@@ -3909,7 +4104,7 @@ public class MarcRecordDetails {
 		for (VariableField eightFiftySixField : eightFiftySixFields) {
 			DataField eightFiftySixDataField = (DataField) eightFiftySixField;
 			char indicator2 = eightFiftySixDataField.getIndicator2();
-			if (indicator2 == '0' || indicator2 == '1' ){
+			if ((indicator2 == '0' || indicator2 == '1') && (eightFiftySixDataField.getSubfield('3') == null) ){
 				ret = true;
 			}
 			else if ( itemRecords == null  && eightFiftySixDataField.getSubfield('u') != null ) {

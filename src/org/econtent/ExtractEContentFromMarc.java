@@ -194,6 +194,14 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			logger.debug("Processing overdrive title " + curRecord.getId());
 			//BA+++  sortTitle
 			
+			// store the availability
+			OverDriveAvailabilityInfo availability = new OverDriveAvailabilityInfo();
+			availability.setCopiesOwned(titleResults.getInt("totalCopies"));
+			availability.setAvailableCopies(titleResults.getInt("availableCopies"));
+			availability.setAvailable(titleResults.getInt("availableCopies") > 0);
+			availability.setNumHolds(titleResults.getInt("numberOfHolds"));
+			curRecord.setAvailabilityInfo(availability);
+			
 			// grab the formats and metadata for this record
 			getIndexedMetaData.setInt(1, titleResults.getInt("id"));
 			ResultSet metaData = getIndexedMetaData.executeQuery();
@@ -677,10 +685,15 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("building", "Digital Collection");
 		if (curAvailability != null && curAvailability.isAvailable()){
 			doc.addField("available_at", "Digital Collection");
+		} else {
+			doc.removeField("available_at");
 		}
 		if (recordInfo.getLanguages().size() > 0){
+			Collection<Object> solrLanguages = doc.getFieldValues("language");
 			for (String curLanguage : recordInfo.getLanguages()){
-				doc.addField("language", curLanguage);
+				if( (solrLanguages == null) || !solrLanguages.contains(curLanguage) ) {
+					doc.addField("language", curLanguage);
+				}
 			}
 		}
 		
@@ -749,6 +762,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		}
 		doc.remove("num_holdings");
 		doc.addField("num_holdings", Integer.toString(numHoldings));
+		doc.remove("num_holding_locations");
+		doc.addField("num_holding_locations", Integer.toString(numHoldings));
 		
 		// exact fields
 		String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";

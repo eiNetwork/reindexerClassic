@@ -1089,6 +1089,7 @@ public class MarcRecordDetails {
 					returnType = String.class;
 				}else if (functionName.equals("getLocationCodes") && parms.length == 2){
 					retval = getLocationCodes(parms[0], parms[1]);
+					retval = getPostgresLocationCodes();
 					returnType = Set.class;
 				}else if (functionName.equals("getLibrarySystemBoost") && parms.length == 4){
 					retval = getLibrarySystemBoost(parms[0], parms[1], parms[2], parms[3]);
@@ -2183,6 +2184,38 @@ public class MarcRecordDetails {
 		return locationCodes;
 		
 	}
+	
+	public Set<String> getPostgresLocationCodes() {
+		// initialize it if it's not present
+		if (locationCodes == null) {
+			locationCodes = new LinkedHashSet<String>();
+		}
+		
+		if( marcProcessor.getPostgresRecords().containsKey( this.getId().substring(2, this.getId().length() - 1) ) ) {
+			try {
+				JSONObject postgresJson = new JSONObject("{" + marcProcessor.getPostgresRecords().get( this.getId().substring(2, this.getId().length() - 1) ) + "}");
+				
+				// get the locations for the order records
+				JSONObject orderRecords = postgresJson.getJSONObject("orderRecords");
+				Iterator<?> keys = orderRecords.keys();
+				while( keys.hasNext() ) {
+					addLocationCode((String)keys.next(), locationCodes);
+				}
+				
+				// get the locations for the checkin records
+				JSONArray checkinRecords = postgresJson.getJSONArray("checkinRecords");
+				for(int i=0; i<checkinRecords.length(); ++i) {
+					JSONObject thisCheckin = checkinRecords.getJSONObject(i);
+					if( thisCheckin.has("code") ) {
+						addLocationCode(thisCheckin.getString("code"), locationCodes);
+					}
+				}
+			} catch (JSONException e) {
+				logger.debug("JSONException => " + e.getMessage());
+			}
+		}
+		return locationCodes;
+	}
 
 	static Pattern steamboatJuvenileCodes = Pattern.compile("^(ssbj[aejlnpuvkbrm]|ssbyl|ssc.*|sst.*)$");
 	static Pattern evldJuvenileCodes = Pattern.compile("^(evabd|evaj|evajs|evebd|evej|evejs|evgbd|evgj|evgjs|evj|evajn|evejn|evgjn)$");
@@ -2685,7 +2718,7 @@ public class MarcRecordDetails {
 		return result;
 	}
 
-	private String[] errorBibs = new String[] {".b12510142", ".b13146403", ".b13676842", ".b14608327", ".b15516866", ".b15940147", ".b1594024x", ".b15955643", ".b1634120x", ".b16355982", 
+	private String[] errorBibs = new String[] {".b12510142", ".b13146403", ".b13676842", ".b14608327", ".b15516866", ".b15940147", ".b1594024x", ".b15955643", ".b1634120x", ".b16355982", ".b37651043",".b35442888",".b26623869",
 			                                   ".b16358594", ".b1636353x", ".b16369087", ".b16372761", ".b16384994", ".b16387636", ".b1638975x", ".b16390593", ".b16393430", ".b16398373",
 			                                   ".b16398993", ".b16400392", ".b16450577", ".b16451910", ".b16455393", ".b1646008x", ".b17483451", ".b16460182", ".b16500088", ".b18724322", 
 			                                   ".b18724656", ".b19350971", ".b2099364x", ".b22994725", ".b23137526", ".b23427371", ".b25050813", ".b25270667", ".b26552322", ".b26691334"};
@@ -2751,57 +2784,73 @@ public class MarcRecordDetails {
 	 * @return JSONObject
 	 */
 	private JSONObject callSierraAPI(String sierraUrl) {
-		if (connectToSierraAPI(false)){
-			//Connect to the API to get our token
-			HttpURLConnection conn;
-			try {
-				URL emptyIndexURL = new URL(sierraUrl);
-				conn = (HttpURLConnection) emptyIndexURL.openConnection();
-				if (conn instanceof HttpsURLConnection){
-					HttpsURLConnection sslConn = (HttpsURLConnection)conn;
-					sslConn.setHostnameVerifier(new HostnameVerifier() {
-						
-						@Override
-						public boolean verify(String hostname, SSLSession session) {
-							//Do not verify host names
-							return true;
+		int connectTry = 0;
+		while( connectTry < 3 ) {
+			if (connectToSierraAPI(connectTry > 0)){
+				//Connect to the API to get our token
+				HttpURLConnection conn;
+				try {
+					URL emptyIndexURL = new URL(sierraUrl);
+					conn = (HttpURLConnection) emptyIndexURL.openConnection();
+					if (conn instanceof HttpsURLConnection){
+						HttpsURLConnection sslConn = (HttpsURLConnection)conn;
+						sslConn.setHostnameVerifier(new HostnameVerifier() {
+							
+							@Override
+							public boolean verify(String hostname, SSLSession session) {
+								//Do not verify host names
+								return true;
+							}
+						});
+					}
+					conn.setRequestMethod("GET");
+					conn.setRequestProperty("User-Agent", "Reindexer");
+					conn.setRequestProperty("Authorization", sierraAPITokenType + " " + sierraAPIToken);
+					//conn.setRequestProperty("Host", "api.overdrive.com");
+					
+					StringBuilder response = new StringBuilder();
+					if (conn.getResponseCode() == 200) {
+						//logger.info("got response");
+						// Get the response
+						BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+						String line;
+						while ((line = rd.readLine()) != null) {
+							response.append(line);
 						}
-					});
-				}
-				conn.setRequestMethod("GET");
-				conn.setRequestProperty("User-Agent", "Reindexer");
-				conn.setRequestProperty("Authorization", sierraAPITokenType + " " + sierraAPIToken);
-				//conn.setRequestProperty("Host", "api.overdrive.com");
-				
-				StringBuilder response = new StringBuilder();
-				if (conn.getResponseCode() == 200) {
-					//logger.info("got response");
-					// Get the response
-					BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-					String line;
-					while ((line = rd.readLine()) != null) {
-						response.append(line);
+						//logger.debug("  Finished reading response");
+						rd.close();
+						return new JSONObject(response.toString());
+					} else {
+						logger.debug("Received HTML code " + conn.getResponseCode() + " connecting to sierra API try " + connectTry );
+						// Get any errors
+						BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+						String line;
+						while ((line = rd.readLine()) != null) {
+							response.append(line);
+						}
+	
+						rd.close();
+						
+						// if it was a 404, make sure we haven't run out of items
+						if( conn.getResponseCode() == 404 && (sierraUrl.indexOf("&limit=") != -1) && (sierraUrl.indexOf("&offset=") != -1) ) {
+							int offsetStart = sierraUrl.indexOf("&offset=") + 8;
+							int offsetEnd = (sierraUrl.indexOf("&", offsetStart) == -1) ? sierraUrl.length() : sierraUrl.indexOf("&", offsetStart);
+							int offset = Integer.parseInt(sierraUrl.substring(offsetStart, offsetEnd));
+							if( offset > 0 ) {
+								String altUrl = sierraUrl.substring(0, offsetStart) + String.valueOf(offset - 1) + sierraUrl.substring(offsetEnd);
+								JSONObject endOfListCheck = callSierraAPI(altUrl);
+								if( endOfListCheck != null && endOfListCheck.getInt("total") == 1) {
+									return new JSONObject("{\"total\":0, \"start\":" + String.valueOf(offset) + ", \"entries\":[]}");
+								}
+							}
+						}
 					}
-					//logger.debug("  Finished reading response");
-					rd.close();
-					return new JSONObject(response.toString());
-				} else {
-					logger.error("Received error " + conn.getResponseCode() + " connecting to sierra API");// try " + connectTry );
-					// Get any errors
-					BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-					String line;
-					while ((line = rd.readLine()) != null) {
-						response.append(line);
-					}
-					logger.debug("  Finished reading response");
-					logger.debug(response.toString());
-
-					rd.close();
+	
+				} catch (Exception e) {
+					logger.debug("Problem loading data from sierra API on try " + connectTry, e );
 				}
-
-			} catch (Exception e) {
-				logger.debug("Error loading data from sierra API");// try " + connectTry, e );
 			}
+			connectTry++;
 		}
 		
 		return null;
@@ -2900,6 +2949,34 @@ public class MarcRecordDetails {
 		}
 
 		return Integer.toString(numHoldings);
+	}
+
+	/**
+	 * Determine the number of locations holding items for the record (or the number of holdings if it's eContent)
+	 * 
+	 * @return Number of locations
+	 */
+	public String getNumHoldingLocations() {
+		if(isEContent()) {
+			Object numHoldings = getMappedFields("num_holdings").get("num_holdings");
+			if (numHoldings != null) {
+				if (numHoldings instanceof String) {
+					return (String) numHoldings;
+				}
+			}
+		} else {
+			Object numLocations = getMappedFields("building").get("building");
+			if (numLocations != null) {
+				if (numLocations instanceof String) {
+					return "1";
+				} else {
+					@SuppressWarnings("unchecked")
+					Set<String> setLocations = (Set<String>)numLocations;
+					return Integer.toString(setLocations.size());
+				}
+			}
+		}
+		return "0";
 	}
 
 	/**
@@ -3459,6 +3536,7 @@ public class MarcRecordDetails {
 		char itemIdSubFieldChar = 'y';
 		char statusSubFieldChar = 's';
 		char dueDateSubFieldChar = '4';
+		char callNumberPrefixSubFieldChar = 'f';
 		char callNumberSubFieldChar = 'a';
 		char opacMsgSubFieldChar = 'r';
 		char volumeSubFieldChar = 'c';
@@ -3500,8 +3578,12 @@ public class MarcRecordDetails {
 						}
 						String barcode = thisObj.has("barcode") ? thisObj.getString("barcode") : null;
 						JSONObject thisLocation = thisObj.has("location") ? thisObj.getJSONObject("location") : null;
-						String location = ((thisLocation != null) && thisLocation.has("code")) ? thisLocation.getString("code"): null
-								;
+						String location = ((thisLocation != null) && thisLocation.has("code")) ? thisLocation.getString("code"): null;
+						
+						// fix the backslashes
+						callNumber = (callNumber != null) ? callNumber.replace("\\", "\\\\") : null;
+						volumeNumber = (volumeNumber != null) ? volumeNumber.replace("\\", "\\\\") : null;
+						
 						// fill in the info
 						returnStr += "\"id\":\"" + this.getId() + "\",";
 						returnStr += "\"itemId\":" + itemId + ",";
@@ -3569,8 +3651,9 @@ public class MarcRecordDetails {
 						logger.warn("No due date field for " + this.getId() + " indicator " + dueDateSubFieldChar  );
 					}
 					// Get call number
+					Subfield callNumberPrefixSubField = dataField.getSubfield(callNumberPrefixSubFieldChar);
 					Subfield callNumberSubField = dataField.getSubfield(callNumberSubFieldChar);
-					String callNumber = callNumberSubField == null ? "" : callNumberSubField.getData().trim();
+					String callNumber = (callNumberPrefixSubField == null ? "" : callNumberPrefixSubField.getData().trim()) + (((callNumberPrefixSubField != null) && (callNumberSubField != null)) ? " " : "") + (callNumberSubField == null ? "" : callNumberSubField.getData().trim());
 					/*if (callNumberSubField == null) {
 						logger.warn("No call number field for " + this.getId() + " indicator " + callNumberSubFieldChar  );
 					}*/
@@ -3598,6 +3681,10 @@ public class MarcRecordDetails {
 					if (locationSubField == null) {
 						logger.warn("No due date field for " + this.getId() + " indicator " + locationSubFieldChar  );
 					}
+
+					// fix the backslashes
+					callNumber = callNumber.replace("\\", "\\\\");
+					volumeNumber = volumeNumber.replace("\\", "\\\\");
 					
 					// fill in the info
 					returnStr += "\"id\":\"" + this.getId() + "\",";
@@ -3618,12 +3705,12 @@ public class MarcRecordDetails {
 				returnStr += "}";
 			}
 		}
-		returnStr += "],\"orderRecords\":[],";
+		returnStr += "],";
 		
-		if( marcProcessor.getCheckinRecords().containsKey( this.getId().substring(2, this.getId().length() - 1) ) ) {
-			returnStr += marcProcessor.getCheckinRecords().get( this.getId().substring(2, this.getId().length() - 1) );
+		if( marcProcessor.getPostgresRecords().containsKey( this.getId().substring(2, this.getId().length() - 1) ) ) {
+			returnStr += marcProcessor.getPostgresRecords().get( this.getId().substring(2, this.getId().length() - 1) );
 		} else {
-			returnStr += "\"numberOfHolds\":0,\"checkinRecords\":[]";
+			returnStr += "\"numberOfHolds\":0,\"orderRecords\":{},\"checkinRecords\":[]";
 		}
 
 		returnStr += "}";
@@ -4047,6 +4134,7 @@ public class MarcRecordDetails {
 		addField(mappedFields, "econtent_source", source);
 		addField(mappedFields, "econtent_protection_type", "econtent_protection_type_map", accessType);
 		addField(mappedFields, "num_holdings", Integer.toString(numHoldings));
+		addField(mappedFields, "num_holding_locations", Integer.toString(numHoldings));
 		//TODO: Index eContent Text? econtentText
 		//logger.debug("The record is available at " + availableAt.size() + " libraries");
 		addFields(mappedFields, "available_at", null, availableAt);

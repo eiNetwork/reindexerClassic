@@ -107,7 +107,7 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 	//BA++ added to create Set of MarcIds from file
 	private ArrayList<String>						 	marcIds	= new ArrayList<String>();
 	
-	private Map<String, String>					checkinRecords = Collections.synchronizedMap(new HashMap<String, String>());
+	private Map<String, String>					postgresRecords = Collections.synchronizedMap(new HashMap<String, String>());
 	
 	
 	private String												itemTag;
@@ -296,15 +296,15 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 			return false;
 		}
 		
-		// grab the saved checkin records
+		// grab the saved postgres records
 		try {
 			List<String> list = Files.readAllLines(Paths.get("/usr/local/vufind2/import/postgresResults.txt"), StandardCharsets.UTF_8);
 			for(int i=0; i<list.size(); ++i) {
 				String[] chunks = list.get(i).split(":",2);
-				checkinRecords.put(chunks[0], chunks[1]);
+				postgresRecords.put(chunks[0], chunks[1]);
 			}
 		} catch (IOException e) {
-			logger.error("Error getting checkin records", e);
+			logger.error("Error getting postgres records", e);
 		}		
 
 		ReindexProcess.addNoteToCronLog("Finished setting up MarcProcessor");
@@ -355,8 +355,8 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 		return econtentRatings;
 	}
 
-	public Map<String, String> getCheckinRecords() {
-		return checkinRecords;
+	public Map<String, String> getPostgresRecords() {
+		return postgresRecords;
 	}
 
 	public ArrayList<DetectionSettings> getDetectionSettings() {

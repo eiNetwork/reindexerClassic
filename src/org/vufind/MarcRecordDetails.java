@@ -118,6 +118,14 @@ public class MarcRecordDetails {
 			String fieldVal[] = marcProcessor.getMarcFieldProps().get(fieldName);
 			mapField(fieldName, fieldVal);
 		}
+
+		// check to see if we need a second look at num_holding_locations
+		numHoldingLocationsRetest = false;
+		if( getMappedFields("num_holding_locations").get("num_holding_locations") == "tryAgain" ) {
+			mappedFields.remove("num_holding_locations");
+			mapField("num_holding_locations", marcProcessor.getMarcFieldProps().get("num_holding_locations"));
+		}
+
 		return true;
 	}
 
@@ -1090,6 +1098,48 @@ public class MarcRecordDetails {
 				}else if (functionName.equals("getLocationCodes") && parms.length == 2){
 					retval = getLocationCodes(parms[0], parms[1]);
 					retval = getPostgresLocationCodes();
+					returnType = Set.class;
+				}else if (functionName.equals("getLocationCodesSmooth") && parms.length == 3){
+					retval = getLocationCodes(parms[0], parms[1]);
+					retval = getPostgresLocationCodes();
+					HashMap<String,Set<String>> locations = new HashMap<String, Set<String>>();
+					if (mapName != null && marcProcessor.findMap(mapName) != null) {
+						@SuppressWarnings("unchecked")
+						Set<String> preFilter = (Set<String>)retval;
+						Iterator<String> it = preFilter.iterator();
+						// get the locations for each value
+						while(it.hasNext()) {
+							String thisLocation = it.next();
+							String thisVal = Utils.remap(thisLocation, marcProcessor.findMap(mapName), true);
+							if( thisVal == null ) {
+								continue;
+							}
+							Set<String> thisSet = locations.get(thisVal);
+							if( thisSet == null ) {
+								thisSet = new HashSet<String>();
+							}
+							thisSet.add(thisLocation);
+							locations.put(thisVal, thisSet);
+						}
+						// find the total
+						float total = 0;
+						it = locations.keySet().iterator();
+						while(it.hasNext()) {
+							total = total + locations.get(it.next()).size();
+						}
+						// see whether they meet the threshold
+						it = locations.keySet().iterator();
+						while(it.hasNext()) {
+							String thisVal = it.next();
+							Set<String> thisSet = locations.get(thisVal);
+							if( (thisSet.size() / total) < Float.valueOf(parms[2]) ) {
+								@SuppressWarnings("unchecked")
+								Set<String> retval2 = (Set<String>)retval;
+								retval2.removeAll(thisSet);
+								retval = retval2;
+							}
+						}
+					}
 					returnType = Set.class;
 				}else if (functionName.equals("getLibrarySystemBoost") && parms.length == 4){
 					retval = getLibrarySystemBoost(parms[0], parms[1], parms[2], parms[3]);
@@ -2956,6 +3006,7 @@ public class MarcRecordDetails {
 	 * 
 	 * @return Number of locations
 	 */
+	private boolean numHoldingLocationsRetest = true;
 	public String getNumHoldingLocations() {
 		if(isEContent()) {
 			Object numHoldings = getMappedFields("num_holdings").get("num_holdings");
@@ -2976,7 +3027,7 @@ public class MarcRecordDetails {
 				}
 			}
 		}
-		return "0";
+		return numHoldingLocationsRetest ? "tryAgain" : "0";
 	}
 
 	/**
@@ -3673,13 +3724,13 @@ public class MarcRecordDetails {
 					Subfield barcodeSubField = dataField.getSubfield(barcodeSubFieldChar);
 					String barcode = barcodeSubField == null ? "" : barcodeSubField.getData().trim();
 					if (barcodeSubField == null) {
-						logger.warn("No due date field for " + this.getId() + " indicator " + barcodeSubFieldChar  );
+						logger.warn("No barcode field for " + this.getId() + " indicator " + barcodeSubFieldChar  );
 					}
 					// Get location
 					Subfield locationSubField = dataField.getSubfield(locationSubFieldChar);
 					String location = locationSubField == null ? "" : locationSubField.getData().trim();
 					if (locationSubField == null) {
-						logger.warn("No due date field for " + this.getId() + " indicator " + locationSubFieldChar  );
+						logger.warn("No location field for " + this.getId() + " indicator " + locationSubFieldChar  );
 					}
 
 					// fix the backslashes

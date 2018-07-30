@@ -136,9 +136,13 @@ public class ReindexProcess {
 				
 				// swap cores if needed
 				if( firstResults != null ) {
+					if( (configIni.get("Reindex", "skipCoreSwap") != null) && configIni.get("Reindex", "skipCoreSwap").equals("true") ) {
+						firstResults.addNote("configuration specifies to skip core swap, not swapping");
+						logger.info("Cores are **NOT** swapped: configuration said to skip");
 					//Do not pass the import if more than 1% of the records have errors 
-					if (errorCount <= processedCount * .01){
+					} else if (errorCount <= processedCount * .01){
 						firstResults.addNote("index passed checks, swapping cores so new index is active.");
+						logger.info("Cores are swapped: number of successes above threshold");
 						URLPostResponse response = Util.getURL("http://localhost:" + solrPort + "/solr/admin/cores?action=SWAP&core=biblio2&other=biblio", logger);
 						if (!response.isSuccess()){
 							firstResults.addNote("Error swapping cores " + response.getMessage());
@@ -147,6 +151,7 @@ public class ReindexProcess {
 						}
 					}else{
 						firstResults.addNote("index did not pass check, not swapping");
+						logger.info("Cores are **NOT** swapped: too many errors");
 					}
 					firstResults.saveResults();
 				}
@@ -465,6 +470,13 @@ public class ReindexProcess {
 			}
 		}
 		
+		// tell them right now whether we plan to swap at the end
+		if( (configIni.get("Reindex", "skipCoreSwap") != null) && configIni.get("Reindex", "skipCoreSwap").equals("true") ) {
+			logger.info("This run will **NOT** swap the cores when it finishes (configuration says to skip)");
+		} else {
+			logger.info("This run will swap the cores when it finishes (pending a success check)");
+		}
+
 		solrPort = configIni.get("Reindex", "solrPort");
 		if (solrPort == null || solrPort.length() == 0) {
 			logger.error("You must provide the port where the solr index is loaded in the import configuration file");

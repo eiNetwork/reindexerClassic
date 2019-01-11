@@ -1104,8 +1104,8 @@ public class MarcRecordDetails {
 					retval = getPostgresLocationCodes();
 					HashMap<String,Set<String>> locations = new HashMap<String, Set<String>>();
 					if (mapName != null && marcProcessor.findMap(mapName) != null) {
-						@SuppressWarnings("unchecked")
-						Set<String> preFilter = (Set<String>)retval;
+						Set<String> preFilter = new LinkedHashSet<String>();
+						preFilter.addAll((Set<String>)retval);
 						Iterator<String> it = preFilter.iterator();
 						// get the locations for each value
 						while(it.hasNext()) {
@@ -1134,11 +1134,12 @@ public class MarcRecordDetails {
 							Set<String> thisSet = locations.get(thisVal);
 							if( (thisSet.size() / total) < Float.valueOf(parms[2]) ) {
 								@SuppressWarnings("unchecked")
-								Set<String> retval2 = (Set<String>)retval;
+								Set<String> retval2 = (Set<String>)preFilter;
 								retval2.removeAll(thisSet);
-								retval = retval2;
+								preFilter = retval2;
 							}
 						}
+						retval = preFilter;
 					}
 					returnType = Set.class;
 				}else if (functionName.equals("getLibrarySystemBoost") && parms.length == 4){

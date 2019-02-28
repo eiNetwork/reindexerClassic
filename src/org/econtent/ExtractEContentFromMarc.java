@@ -64,6 +64,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	private PreparedStatement getAllOverDriveTitles;
 	private PreparedStatement getIndexedMetaData;
 	private PreparedStatement getExternalFormats;
+	private PreparedStatement getSourceMetaData;
 	
 	// BA++ Setup additional statements to delete records from db not in OverDrive
 	private PreparedStatement					deleteEContentRecordnotinOverdrive;
@@ -135,6 +136,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			getAllOverDriveTitles = reindexerConn.prepareStatement("SELECT * FROM externalData", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getIndexedMetaData = reindexerConn.prepareStatement("SELECT * FROM indexedMetaData WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			getExternalFormats = reindexerConn.prepareStatement("SELECT externalFormatId, externalDataId, formatId, formatLink, dateAdded, dateUpdated, sourceId, externalFormatId, externalFormatName, externalFormatNumber, displayFormat, formatCategory FROM externalFormats JOIN format ON (externalFormats.formatId=format.id) WHERE externalFormats.externalDataId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			getSourceMetaData = reindexerConn.prepareStatement("SELECT sourceMetaData FROM externalData WHERE id = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 		} catch (Exception ex) {
 			// handle any errors
 			logger.error("Error initializing econtent extraction ", ex);
@@ -243,6 +245,15 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			getExternalFormats.setInt(1, overDriveInfo.getDatabaseId());
 			ResultSet format = getExternalFormats.executeQuery();
 			
+			overDriveInfo.setDescription(data.getString("description"));
+			if( data.getString("subject") != null )
+			{
+				JSONArray subjects = new JSONArray( data.getString("subject") );
+				for (int i = 0; i < subjects.length(); i++){
+					overDriveInfo.getSubjects().add(subjects.getString(i));
+				}
+			}
+
 			//logger.debug("Setting up overDriveInfo object");
 			overDriveInfo.setEdition(data.getString("edition"));
 			overDriveInfo.setPublisher(data.getString("publisher"));
@@ -260,13 +271,17 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			if( data.getString("language") != null )
 			{
 				JSONArray languages = new JSONArray( data.getString("language") );
+				JSONObject language = null;
 				for (int i = 0; i < languages.length(); i++){
-					JSONObject language = languages.getJSONObject(i);
+					language = languages.getJSONObject(i);
 					overDriveInfo.getLanguages().add(language.getString("name"));
 				}
 			}
 			//logger.debug("Set languages");
-			
+
+			JSONArray isbns = new JSONArray( (data.getString("isbn") != null) ? data.getString("isbn") : "[]" );
+			String nextISBN = null;
+			HashSet<String> seenISBNs = new HashSet<String>();
 			while (format.next()){
 				OverDriveItem curItem = new OverDriveItem();
 				//logger.debug("Create new overdrive item");
@@ -276,12 +291,18 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				//logger.debug("format name " + format.getString("name"));
 				curItem.setFormatNumeric(format.getInt("externalFormatNumber"));
 				//logger.debug("Numeric format");
+				nextISBN = (isbns.length() > 0) ? (String)isbns.remove(0) : null;
+				if( nextISBN != null && !seenISBNs.contains(nextISBN)) {
+					curItem.setIdentifier(nextISBN);
+					seenISBNs.add(nextISBN);
+				}
 				overDriveInfo.getItems().put(curItem.getFormatId(), curItem);
 				//logger.debug("Set formats");
 			}
-				
+
 			format.close();
 			data.close();
+
 			//logger.debug("Done setting up overDriveInfo object");	
 		} catch (JSONException e) {
 			logger.error("Error loading meta data for title " + overDriveInfo.getId() + " " + e.toString());
@@ -646,7 +667,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			try {
 				//Reindex the record
 				SolrInputDocument doc = overDriveItemsWithMarc.get(overDriveId);
-				
+
 				// add some extra fields we need
 				addPropertyIfNotPresent(doc, "externalId", overDriveId);
 				doc.addField("econtent_source", "OverDrive");
@@ -675,6 +696,20 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		} else {
 			doc = new SolrInputDocument();
 			doc.addField("id", "econtentRecord" + econtentRecordId);
+
+			// no MARC record, so fill in fullrecord with the JSON from OverDrive
+			try {
+				getSourceMetaData.setInt(1, recordInfo.getDatabaseId());
+				ResultSet sourceMetaData = getSourceMetaData.executeQuery();
+
+				if( sourceMetaData.next() ) {
+					doc.addField("fullrecord", sourceMetaData.getString("sourceMetaData"));
+				}
+			} catch (SQLException e) {
+				logger.error("Error loading source meta data for title " + recordInfo.getId() + " " + e.toString());
+				results.addNote("Error loading source meta data for title " + recordInfo.getId() + " " + e.toString());
+				results.incErrors();
+			}
 		}
 		
 		doc.addField("collection", "Allegheny County Catalog");

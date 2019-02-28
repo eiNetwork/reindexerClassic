@@ -232,7 +232,7 @@ public class MarcRecordDetails {
 			
 			String url = null;
 			if (eightFiftySixDataField.getSubfield('u') != null) {
-				url = eightFiftySixDataField.getSubfield('u').getData();
+				url = eightFiftySixDataField.getSubfield('u').getData().trim();
 			}
 			String text = null;
 			if (eightFiftySixDataField.getSubfield('y') != null) {

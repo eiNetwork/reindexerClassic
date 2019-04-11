@@ -109,7 +109,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if (clearEContentRecordsAtStartOfIndex){
 			logger.info("Clearing existing econtent records from index");
 			results.addNote("clearing existing econtent records");
-			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?commit=true", "<delete><query>recordtype:EContent</query></delete>", logger);
+			URLPostResponse response = Util.postToURL("http://localhost:" + solrPort + "/solr/biblio2/update/?commit=true", "<delete><query>recordtype:EContent OR recordtype:overdrive</query></delete>", logger);
 			if (!response.isSuccess()){
 				results.addNote("Error clearing existing econtent records " + response.getMessage());
 			}
@@ -672,7 +672,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				addPropertyIfNotPresent(doc, "externalId", overDriveId);
 				doc.addField("econtent_source", "OverDrive");
 				doc.addField("econtent_protection_type", "external");
-				addPropertyIfNotPresent(doc, "recordtype", "EContent");
+				doc.removeField("recordtype");
+				addPropertyIfNotPresent(doc, "recordtype", "overdrive");
 				doc.addField("collection", "Allegheny County Catalog");
 				doc.addField("institution", "Digital Collection");
 				doc.addField("building", "Digital Collection");
@@ -856,7 +857,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		addPropertyIfNotPresent(doc, "externalId", recordInfo.getId());
 		doc.addField("econtent_source", "OverDrive");
 		doc.addField("econtent_protection_type", "external");
-		addPropertyIfNotPresent(doc, "recordtype", "EContent");
+		doc.removeField("recordtype");
+		addPropertyIfNotPresent(doc, "recordtype", "overdrive");
 		doc.addField("format_category", recordInfo.getFormatCategory());
 		doc.addField("format", "Category: " + recordInfo.getFormatCategory());
 		

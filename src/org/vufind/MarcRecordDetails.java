@@ -1074,6 +1074,9 @@ public class MarcRecordDetails {
 				}else if (functionName.equals("getFormat")){
 					retval = getFormat("false");
 					returnType = Set.class;
+				}else if (functionName.equals("getGroupingKey") && parms.length == 1){
+					retval = getGroupingKey(parms[0]);
+					returnType = String.class;
 				}else if (functionName.equals("getAllSubfields") && parms.length == 2){
 					retval = getAllSubfields(parms[0], parms[1]);
 					returnType = Set.class;
@@ -3510,9 +3513,49 @@ public class MarcRecordDetails {
 		}
 		return result;
 	}
+
+	/**
+	 * Determine grouping key
+	 * 
+	 * @param String map name to consult for fields to query
+	 * @return String grouping key for record
+	 */
+	public String getGroupingKey(String mapName) {
+		// get the format type for this record
+		String format = getFormatFromCollectionOrStd("998d", "true").iterator().next();
+
+		// find it in the map
+		String retval = "";
+		if (mapName != null && marcProcessor.findMap(mapName) != null) {
+			String thisKey = Utils.remap(format, marcProcessor.findMap(mapName), true);
+
+			// no grouping key set for this type, return null
+			if( thisKey == null ) {
+				return null;
+			}
+
+			// split this into the constituent parts and fetch their values
+			String[] sections = thisKey.split("\\[");
+			for(int i=0; i<sections.length; i++) {
+				String[] options = sections[i].replaceAll("]","").split("\\|");
+				for(int j=0; j<options.length; j++) {
+					String thisField = getFieldVals(options[j],"");
+					if( !thisField.isEmpty() ) {
+						retval += thisField;
+						j=options.length;
+					}
+				}
+			}
+
+			// now remove all non-alphanumeric characters
+			retval = retval.toLowerCase().replaceAll("[^a-z0-9]","");
+		}
+		return retval;
+	}
+
 	/**
 	 * Determine Available Locations for EIN
-	 * 
+	 *
 	 * @param Record
 	 *          record
 	 * @return Set format of record
@@ -3640,14 +3683,14 @@ public class MarcRecordDetails {
 						returnStr += "\"id\":\"" + this.getId() + "\",";
 						returnStr += "\"itemId\":" + itemId + ",";
 						returnStr += "\"availability\":" + ((Arrays.asList(availableStatuses).contains(status) && (dueDate == null)) ? "true" : "false") + ",";
-						returnStr += "\"status\":\"" + status + "\",";
+						returnStr += "\"statusCode\":\"" + status + "\",";
+						returnStr += "\"locationID\":\"" + location + "\",";
 						returnStr += "\"location\":null,\"reserve\":\"N\",";
 						returnStr += "\"callnumber\":\"" + callNumber + ((opacMsg == "n") ? "<br>NO REQUESTS" : "") + "\",";
 						returnStr += "\"duedate\":" + (((dueDate == null) || (dueDate.compareTo("-  -") == 0)) ? "null" : ("\"" + dueDate + "\"")) + ",";
 						returnStr += "\"returnDate\":false,";
 						returnStr += "\"number\":" + ((volumeNumber.compareTo("") == 0) ? "null" : ("\"" + volumeNumber + "\"")) + ",";
 						returnStr += "\"barcode\":\"" + barcode + "\",";
-						returnStr += "\"locationCode\":\"" + location + "\",";
 						returnStr += "\"copiesOwned\":1";
 					}
 					offset += processed;
@@ -3742,14 +3785,14 @@ public class MarcRecordDetails {
 					returnStr += "\"id\":\"" + this.getId() + "\",";
 					returnStr += "\"itemId\":" + ((itemId.length() >= 10) ? ("\"" + itemId.substring(2, itemId.length() - 1) + "\"") : "null") + ",";
 					returnStr += "\"availability\":" + ((Arrays.asList(availableStatuses).contains(status) && (dueDate.compareTo("-  -") == 0)) ? "true" : "false") + ",";
-					returnStr += "\"status\":\"" + status + "\",";
+					returnStr += "\"statusCode\":\"" + status + "\",";
+					returnStr += "\"locationID\":\"" + location + "\",";
 					returnStr += "\"location\":null,\"reserve\":\"N\",";
 					returnStr += "\"callnumber\":\"" + callNumber + ((opacMsg.compareTo("n") == 0) ? "<br>NO REQUESTS" : "") + "\",";
 					returnStr += "\"duedate\":" + ((dueDate.compareTo("-  -") == 0) ? "null" : ("\"" + dueDate + "\"")) + ",";
 					returnStr += "\"returnDate\":false,";
 					returnStr += "\"number\":" + ((volumeNumber.compareTo("") == 0) ? "null" : ("\"" + volumeNumber + "\"")) + ",";
 					returnStr += "\"barcode\":\"" + barcode + "\",";
-					returnStr += "\"locationCode\":\"" + location + "\",";
 					returnStr += "\"copiesOwned\":1";
 				}
 			}

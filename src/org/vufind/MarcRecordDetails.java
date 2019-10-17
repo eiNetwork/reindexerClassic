@@ -216,8 +216,12 @@ public class MarcRecordDetails {
 		HashSet<Integer> allITypes = new HashSet<Integer>();
 		if ((marcProcessor.getItemTag() != null) && (marcProcessor.getUrlSubfield() != null) && (marcProcessor.getLocationSubfield() != null)) {
 			@SuppressWarnings("unchecked")
-			List<DataField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
-			for (DataField curItem : itemFields) {
+			List<VariableField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
+			for (VariableField curItemVar : itemFields) {
+				DataField curItem = (DataField)curItemVar;
+				if( curItem == null ) {
+					continue;
+				}
 				Subfield iTypeField = curItem.getSubfield('j');
 				if (iTypeField != null){
 					allITypes.add(Integer.parseInt(iTypeField.getData()));
@@ -290,8 +294,12 @@ public class MarcRecordDetails {
 		if ((marcProcessor.getItemTag() != null) && (marcProcessor.getUrlSubfield() != null) && (marcProcessor.getLocationSubfield() != null) &&
 				(marcProcessor.getItemTag().length() > 0) && (marcProcessor.getUrlSubfield().length() > 0) && (marcProcessor.getLocationSubfield().length() > 0)) {
 			@SuppressWarnings("unchecked")
-			List<DataField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
-			for (DataField curItem : itemFields) {
+			List<VariableField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
+			for (VariableField curItemVar : itemFields) {
+				DataField curItem = (DataField)curItemVar;
+				if( curItem == null ) {
+					continue;
+				}
 				Subfield urlField = curItem.getSubfield(marcProcessor.getUrlSubfield().charAt(0));
 				if (urlField != null) {
 					//logger.debug("Found item based url " + urlField.getData());
@@ -324,8 +332,12 @@ public class MarcRecordDetails {
 		//If the library Id is still not set, check item records to see which library (or libraries own the title).
 		if (libraryId == -1 && marcProcessor.getItemTag() != null && marcProcessor.getSharedEContentLocation() != null){
 			@SuppressWarnings("unchecked")
-			List<DataField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
-			for (DataField curItem : itemFields) {
+			List<VariableField> itemFields = record.getVariableFields(marcProcessor.getItemTag());
+			for (VariableField curItemVar : itemFields) {
+				DataField curItem = (DataField)curItemVar;
+				if( curItem == null ) {
+					continue;
+				}
 				Subfield locationField = curItem.getSubfield(marcProcessor.getLocationSubfield().charAt(0));
 				if (locationField != null){
 					String location = locationField.getData();
@@ -2150,8 +2162,8 @@ public class MarcRecordDetails {
 		}
 		localCallnumbers = new HashSet<LocalCallNumber>();
 		@SuppressWarnings("unchecked")
-		List<DataField> itemFields = record.getVariableFields(itemTag);
-		Iterator<DataField> itemFieldIterator = itemFields.iterator();
+		List<VariableField> itemFields = record.getVariableFields(itemTag);
+		Iterator<VariableField> itemFieldIterator = itemFields.iterator();
 		char callNumberSubfieldChar = callNumberSubfield.charAt(0);
 		char locationSubfieldChar = locationSubfield.charAt(0);
 		while (itemFieldIterator.hasNext()) {
@@ -2452,9 +2464,9 @@ public class MarcRecordDetails {
 		}
 
 		@SuppressWarnings("unchecked")
-		List<DataField> physicalDescription = record.getVariableFields("300");
+		List<VariableField> physicalDescription = record.getVariableFields("300");
 		if (physicalDescription != null) {
-			Iterator<DataField> fieldsIter = physicalDescription.iterator();
+			Iterator<VariableField> fieldsIter = physicalDescription.iterator();
 			DataField field;
 			while (fieldsIter.hasNext()) {
 				field = (DataField) fieldsIter.next();
@@ -2474,9 +2486,9 @@ public class MarcRecordDetails {
 			}
 		}
 		@SuppressWarnings("unchecked")
-		List<DataField> topicalTerm = record.getVariableFields("650");
+		List<VariableField> topicalTerm = record.getVariableFields("650");
 		if (physicalDescription != null) {
-			Iterator<DataField> fieldsIter = topicalTerm.iterator();
+			Iterator<VariableField> fieldsIter = topicalTerm.iterator();
 			DataField field;
 			while (fieldsIter.hasNext()) {
 				field = (DataField) fieldsIter.next();
@@ -2495,9 +2507,9 @@ public class MarcRecordDetails {
 
 		// check the 007 - this is a repeating field
 		@SuppressWarnings("unchecked")
-		List<DataField> fields = record.getVariableFields("007");
+		List<VariableField> fields = record.getVariableFields("007");
 		if (fields != null) {
-			Iterator<DataField> fieldsIter = fields.iterator();
+			Iterator<VariableField> fieldsIter = fields.iterator();
 			ControlField formatField;
 			while (fieldsIter.hasNext()) {
 				formatField = (ControlField) fieldsIter.next();
@@ -3147,8 +3159,8 @@ public class MarcRecordDetails {
 
 		// Now check for interesting strings in 300 subfield b:
 		@SuppressWarnings("unchecked")
-		List<DataField> fields = record.getVariableFields("300");
-		Iterator<DataField> fieldsIter = fields.iterator();
+		List<VariableField> fields = record.getVariableFields("300");
+		Iterator<VariableField> fieldsIter = fields.iterator();
 		if (fields != null) {
 			DataField physical;
 			while (fieldsIter.hasNext()) {
@@ -3257,8 +3269,8 @@ public class MarcRecordDetails {
 		Set<String> result = new LinkedHashSet<String>();
 		// Get a list of all 989 tags that store per item information
 		@SuppressWarnings("unchecked")
-		List<DataField> input = record.getVariableFields(itemField);
-		Iterator<DataField> iter = input.iterator();
+		List<VariableField> input = record.getVariableFields(itemField);
+		Iterator<VariableField> iter = input.iterator();
 		String dateAddedStr = null;
 		SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
 		Date dateAddedDate = null;
@@ -3513,7 +3525,7 @@ public class MarcRecordDetails {
 		}
 		return result;
 	}
-
+	
 	/**
 	 * Determine grouping key
 	 * 
@@ -3552,10 +3564,10 @@ public class MarcRecordDetails {
 		}
 		return retval;
 	}
-
+	
 	/**
 	 * Determine Available Locations for EIN
-	 *
+	 * 
 	 * @param Record
 	 *          record
 	 * @return Set format of record
@@ -4119,8 +4131,12 @@ public class MarcRecordDetails {
 				// overdrive has been updating their marc records to use crossRefIDs instead of the full ID.  To check for that,
 				// we need to look in 037a, because they're storing the full id there in those marc records.
 				@SuppressWarnings("unchecked")
-				List<DataField> itemFields = record.getVariableFields("037");
-				for (DataField curItem : itemFields) {
+				List<VariableField> itemFields = record.getVariableFields("037");
+				for (VariableField curItemVar : itemFields) {
+					DataField curItem = (DataField)curItemVar;
+					if( curItem == null ) {
+						continue;
+					}
 					Subfield iTypeField = curItem.getSubfield('a');
 					if (iTypeField != null){
 						String overDriveId = (String)iTypeField.getData();

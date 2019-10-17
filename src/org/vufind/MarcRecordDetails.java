@@ -3552,7 +3552,23 @@ public class MarcRecordDetails {
 				String[] options = sections[i].replaceAll("]","").split("\\|");
 				for(int j=0; j<options.length; j++) {
 					String thisField = getFieldVals(options[j],"");
-					if( !thisField.isEmpty() ) {
+					if( options[j].equals("264c") ) {
+						List<VariableField> twoSixtyFourFields = record.getVariableFields("264");
+						thisField = null;
+						char thisIndicator = '9';
+						for (VariableField twoSixtyFourField : twoSixtyFourFields) {
+							DataField twoSixtyFourDataField = (DataField) twoSixtyFourField;
+							char indicator2 = twoSixtyFourDataField.getIndicator2();
+							Subfield subfieldC = twoSixtyFourDataField.getSubfield('c');
+							if( subfieldC != null ) {
+								if ( (indicator2 <= thisIndicator) ){
+									thisField = subfieldC.toString();
+									thisIndicator = indicator2;
+								}
+							}
+						}
+					}
+					if( thisField != null && !thisField.isEmpty() ) {
 						retval += thisField;
 						j=options.length;
 					}

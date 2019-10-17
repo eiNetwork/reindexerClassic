@@ -2919,6 +2919,7 @@ public class MarcRecordDetails {
 			connectTry++;
 		}
 		
+		logger.error("Received " + connectTry + " errors connecting to sierra authentication service" );
 		return null;
 	}
 		
@@ -2980,7 +2981,7 @@ public class MarcRecordDetails {
 				sierraAPIExpiration = new Date().getTime() + (parser.getLong("expires_in") * 1000) - 10000;
 				//logger.debug("OverDrive token is " + overDriveAPIToken);
 			} else {
-				logger.error("Received error " + conn.getResponseCode() + " connecting to sierra authentication service" );
+				logger.debug("Received " + conn.getResponseCode() + " connecting to sierra authentication service" );
 				// Get any errors
 				BufferedReader rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
 				String line;

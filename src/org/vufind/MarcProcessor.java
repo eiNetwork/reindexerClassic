@@ -298,7 +298,11 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 		
 		// grab the saved postgres records
 		try {
-			List<String> list = Files.readAllLines(Paths.get("/usr/local/vufind2/import/postgresResults.txt"), StandardCharsets.UTF_8);
+			List<String> list = null;
+			String basePath = configIni.get("Reindex", "basePath");
+			if (basePath != null && basePath.length() > 0){
+				list = Files.readAllLines(Paths.get(basePath + "/import/postgresResults.txt"), StandardCharsets.UTF_8);
+			}
 			for(int i=0; i<list.size(); ++i) {
 				String[] chunks = list.get(i).split(":",2);
 				postgresRecords.put(chunks[0], chunks[1]);

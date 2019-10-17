@@ -171,16 +171,17 @@ public class ReindexProcess {
 		endTime = new Date().getTime();
 		sendCompletionMessage(recordProcessors);
 		
+		String basePath = configIni.get("Reindex", "basePath");
 		logger.info("Restarting Solr for " + serverName);
 		try {
-			SystemUtil.executeCommand("/usr/local/vufind2/restartSolr.sh", logger);
+			SystemUtil.executeCommand(basePath + "/restartSolr.sh", logger);
 		} catch (IOException e) {
 			logger.error("Error restarting Solr", e);
 		}
 
 		logger.info("Resetting circ_trans time for " + serverName);
 		try {
-			SystemUtil.executeCommand("/usr/bin/php /usr/local/vufind2/rollBackCircTransTime.php", logger);
+			SystemUtil.executeCommand("/usr/bin/php " + basePath + "/rollBackCircTransTime.php", logger);
 		} catch (IOException e) {
 			logger.error("Error resetting circ_trans time", e);
 		}

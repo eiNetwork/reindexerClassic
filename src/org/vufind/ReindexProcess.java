@@ -375,19 +375,7 @@ public class ReindexProcess {
 		}
 	}
 
-	private static StringBuffer cronNotes = new StringBuffer();
-	private static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 	public static void addNoteToCronLog(String note) {
-		try {
-			Date date = new Date();
-			cronNotes.append("<br>").append(dateFormat.format(date)).append(note);
-			addNoteToCronLogStmt.setString(1, Util.trimTo(65535, cronNotes.toString()));
-			addNoteToCronLogStmt.setLong(2, new Date().getTime() / 1000);
-			addNoteToCronLogStmt.setLong(3, reindexLogId);
-			addNoteToCronLogStmt.executeUpdate();
-		} catch (SQLException e) {
-			logger.error("Error adding note to Reindex Log", e);
-		}
 	}
 	
 	public static void updateLastUpdateTime(){
@@ -611,7 +599,7 @@ public class ReindexProcess {
 	}
 	
 	private static Ini loadConfigFile(String filename){
-		//First load the default config file 
+		//First load the default config file
 		String configName = "../conf/" + filename;
 		logger.info("Loading configuration from " + configName);
 		File configFile = new File(configName);

@@ -202,29 +202,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 		}
 		catalogUrl = configIni.get("Catalog", "url");
 
-		// Load the checksums of any marc records that have been loaded already
-		// This allows us to detect whether or not the record is new, has changed,
-		// or is deleted
-		logger.info("Loading existing checksums for records");
-		ReindexProcess.addNoteToCronLog("Loading existing checksums for records");
-		try {
-			PreparedStatement existingRecordChecksumsStmt = vufindConn.prepareStatement("SELECT * FROM marc_import", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			ResultSet existingRecordChecksumsRS = existingRecordChecksumsStmt.executeQuery();
-			while (existingRecordChecksumsRS.next()) {
-				MarcIndexInfo marcInfo = new MarcIndexInfo();
-				marcInfo.setChecksum(existingRecordChecksumsRS.getLong("checksum"));
-				marcInfo.setBackupChecksum(existingRecordChecksumsRS.getLong("backup_checksum"));
-				marcInfo.setEContent(existingRecordChecksumsRS.getBoolean("eContent"));
-				marcInfo.setBackupEContent(existingRecordChecksumsRS.getBoolean("backup_eContent"));
-				marcIndexInfo.put(existingRecordChecksumsRS.getString("id"), marcInfo);
-			}
-			existingRecordChecksumsRS.close();
-		} catch (SQLException e) {
-			logger.error("Unable to load checksums for existing records", e);
-			ReindexProcess.addNoteToCronLog("Unable to load checksums for existing records " + e.toString());
-			return false;
-		}
-
 		// Load ratings for print and eContent titles
 		logger.info("Loading ratings");
 		ReindexProcess.addNoteToCronLog("Loading ratings");
@@ -713,8 +690,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 						}
 						MarcIndexInfo marcIndexedInfo = null;
 						String marcRecordId = marcInfo.getId();
-						//BA++ add to set for processing econtent deletion  marcIds
-						marcIds.add(marcRecordId);
 						
 						if (marcIndexInfo.containsKey(marcInfo.getId())) {
 							marcIndexedInfo = marcIndexInfo.get(marcInfo.getId());
@@ -731,7 +706,7 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 								//logger.debug("Record is changed - backup econtent");
 								recordStatus = RECORD_CHANGED_SECONDARY;
 							} else {
-								// logger.debug("Record is unchanged");
+								//logger.debug("Record is unchanged");
 								recordStatus = RECORD_UNCHANGED;
 							}
 						} else {
@@ -745,9 +720,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 							//logger.debug(recordNumber + " - " + processor.getClass().getName() + " - " + marcInfo.getId());
 							processor.processMarcRecord(this, marcInfo, recordStatus, logger);				
 						}
-
-						updateMarcRecordChecksum(marcRecordId, marcInfo, recordStatus, marcIndexedInfo);
-
 					}
 					marcInfo = null;
 					recordsProcessed++;
@@ -772,27 +744,6 @@ private Set<String>							existingEContentIds	= Collections.synchronizedSet(new 
 			ReindexProcess.addNoteToCronLog("Finished processing file " + marcFile.toString() + " found " + recordNumber + " records");
 		} catch (Exception e) {
 			logger.error("Error processing file " + marcFile.toString(), e);
-		}
-	}
-
-	private void updateMarcRecordChecksum(String recordId, MarcRecordDetails marcInfo, int recordStatus, MarcIndexInfo marcIndexedInfo) throws SQLException {
-		try {
-			// Update the checksum in the database
-			if (recordStatus == RECORD_CHANGED_PRIMARY || recordStatus == RECORD_CHANGED_SECONDARY) {
-				updateMarcInfoStmt.setLong(1, marcInfo.getChecksum());
-				updateMarcInfoStmt.setLong(2, marcIndexedInfo.getChecksum());
-				updateMarcInfoStmt.setInt(3, marcInfo.isEContent() ? 1 : 0);
-				updateMarcInfoStmt.setInt(4, marcIndexedInfo.isEContent() ? 1 : 0);
-				updateMarcInfoStmt.setString(5, recordId);
-				updateMarcInfoStmt.executeUpdate();
-			} else if (recordStatus == RECORD_NEW) {
-				insertMarcInfoStmt.setString(1, recordId);
-				insertMarcInfoStmt.setLong(2, marcInfo.getChecksum());
-				insertMarcInfoStmt.setInt(3, marcInfo.isEContent() ? 1 : 0);
-				insertMarcInfoStmt.executeUpdate();
-			}
-		} catch (Exception e) {
-			ReindexProcess.addNoteToCronLog("Error updating marc checksum for " + recordId + " marcInfo id is " + marcInfo.getId());
 		}
 	}
 

@@ -804,7 +804,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		// exact fields
 		String allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789 ";
 		// title
-		String exactTitle = recordInfo.getTitle().toLowerCase().trim();
+		String exactTitle = (recordInfo.getTitle() != null) ? recordInfo.getTitle().toLowerCase().trim() : "";
 		String exactTitleClean = "";
 		for(int i=0; i<exactTitle.length(); i++) {
 			if( allowedChars.contains(exactTitle.substring(i, i + 1)) ) {
@@ -816,6 +816,40 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		}
 		exactTitleClean = "EXACTSTART" + exactTitleClean.replaceAll(" ", "SPACE") + "EXACTEND";
 		doc.addField("title_exact", exactTitleClean);
+
+		// grouping key
+		String groupingKey = ((recordInfo.getTitle() != null) ? recordInfo.getTitle().toLowerCase().trim() : "");
+		groupingKey = groupingKey.replaceAll(" ", "");
+		String groupingKeyClean = "";
+		for(int i=0; i<groupingKey.length(); i++) {
+			if( allowedChars.contains(groupingKey.substring(i, i + 1)) ) {
+				groupingKeyClean = groupingKeyClean.concat(groupingKey.substring(i, i + 1));
+			}
+		}
+		if( !groupingKeyClean.equals("") ) {
+			groupingKey = ((recordInfo.getAuthor() != null) ? recordInfo.getAuthor().toLowerCase().trim() : "");
+			groupingKey = groupingKey.replaceAll(" ", "");
+			for(int i=0; i<groupingKey.length(); i++) {
+				if( allowedChars.contains(groupingKey.substring(i, i + 1)) ) {
+					groupingKeyClean = groupingKeyClean.concat(groupingKey.substring(i, i + 1));
+				}
+			}
+			addPropertyIfNotPresent(doc, "grouping_key", groupingKeyClean);
+		}
+		/*
+		// grouping key 2 (with series info)
+		groupingKey = ((recordInfo.getSeries() != null) ? recordInfo.getSeries().toLowerCase().trim() : "") +
+					  ((recordInfo.getTitle() != null) ? recordInfo.getTitle().toLowerCase().trim() : "") +
+					  ((recordInfo.getAuthor() != null) ? recordInfo.getAuthor().toLowerCase().trim() : "");
+		groupingKey = groupingKey.replaceAll(" ", "");
+		groupingKeyClean = "";
+		for(int i=0; i<groupingKey.length(); i++) {
+			if( allowedChars.contains(groupingKey.substring(i, i + 1)) ) {
+				groupingKeyClean = groupingKeyClean.concat(groupingKey.substring(i, i + 1));
+			}
+		}
+		doc.addField("grouping_key2", groupingKeyClean);
+		*/
 		/*
 		// author
 		String exactAuthor = recordInfo.getAuthor().toLowerCase().trim();
@@ -859,8 +893,10 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		doc.addField("econtent_protection_type", "external");
 		doc.removeField("recordtype");
 		addPropertyIfNotPresent(doc, "recordtype", "overdrive");
-		doc.addField("format_category", recordInfo.getFormatCategory());
-		doc.addField("format", "Category: " + recordInfo.getFormatCategory());
+		if( recordInfo.getFormatCategory() != null ) {
+			doc.addField("format_category", recordInfo.getFormatCategory());
+			doc.addField("format", "Category: " + recordInfo.getFormatCategory());
+		}
 		
 		if( recordInfo.getCoverImage() != null && recordInfo.getCoverImage() != "") {
 			addPropertyIfNotPresent(doc, "thumbnail", recordInfo.getCoverImage());

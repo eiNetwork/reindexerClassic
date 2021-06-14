@@ -321,18 +321,27 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		try {
 			results.incRecordsProcessed();
 			
-			// see if it has an overdrive URL			
+			// see if it has an overdrive URL
 			if( recordInfo.getExternalId() != null ) {
-				if( overDriveItemsWithMarc.containsKey(recordInfo.getExternalId()) ) {
-					SolrInputDocument newMarc = recordInfo.getSolrDocument();
-					SolrInputDocument prevMarc = overDriveItemsWithMarc.get(recordInfo.getExternalId());
-					if( ((String)newMarc.getFieldValue("date_added")).compareTo((String)prevMarc.getFieldValue("date_added")) > 0 ) {
-						overDriveItemsWithMarc.put(recordInfo.getExternalId(), newMarc);
-					}
+				OverDriveRecordInfo ODrecordInfo = overDriveTitles.get(recordInfo.getExternalId());
+				if( ODrecordInfo == null ) {
+					logger.debug("OverDrive record with MARC (id:" + recordInfo.getExternalId() + ") is no longer in our collection");
 				} else {
-					overDriveItemsWithMarc.put(recordInfo.getExternalId(), recordInfo.getSolrDocument());
+					logger.debug("Adding OverDrive record with MARC to index " + ODrecordInfo.getId());
+					loadOverDriveMetaData(ODrecordInfo);
+					try {
+						//Reindex the record
+						SolrInputDocument doc = createSolrDocForOverDriveRecord(ODrecordInfo, ODrecordInfo.getDatabaseId(), recordInfo.getSolrDocument());
+						updateServer.add(doc);
+						// remove it from the OD list
+						overDriveTitles.remove(recordInfo.getExternalId());
+						processedOverDriveRecords.put(recordInfo.getExternalId(), recordInfo.getExternalId());
+					} catch (Exception e) {
+						logger.error("Error processing eContent record " + recordInfo.getExternalId() , e);
+						results.incErrors();
+						results.addNote("Error processing eContent record " + recordInfo.getExternalId() + " " + e.toString());
+					}
 				}
-				//processedOverDriveRecords.put(recordInfo.getExternalId(), recordInfo.getExternalId());
 			}
 			
 			if (!recordInfo.isEContent()){
@@ -689,12 +698,11 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	}
 	
 	private SolrInputDocument createSolrDocForOverDriveRecord(OverDriveRecordInfo recordInfo, long econtentRecordId) {
+		return createSolrDocForOverDriveRecord(recordInfo, econtentRecordId, null);
+	}
+	private SolrInputDocument createSolrDocForOverDriveRecord(OverDriveRecordInfo recordInfo, long econtentRecordId, SolrInputDocument doc) {
 		logger.info("add Solr info for OD record " + econtentRecordId);
-		SolrInputDocument doc;		
-		if( overDriveItemsWithMarc.containsKey(recordInfo.getId()) ) {
-			doc = overDriveItemsWithMarc.get(recordInfo.getId());
-			overDriveItemsWithMarc.remove(recordInfo.getId());
-		} else {
+		if( doc == null ) {
 			doc = new SolrInputDocument();
 			doc.addField("id", "econtentRecord" + econtentRecordId);
 
